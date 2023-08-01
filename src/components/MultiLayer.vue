@@ -223,6 +223,8 @@ export default {
        * 
        * 力导引布局
        * 
+       * 要求:无要求
+       * 
        */
       let simulation = d3.forceSimulation()
                           .nodes(_nodes)
@@ -237,34 +239,6 @@ export default {
       simulation.stop();
       simulation.tick(300);
 
-
-      /**
-       * 
-       * 王子潇布局算法
-       * 
-       */
-      let layer_data = ['layerID layerLabel']
-      let layer_map = []
-      for(let layer_index in this.innerGraphs){
-        layer_data.push(`${parseInt(layer_index)+1} layer_name`);//构建layer data
-        //初始化layer_map
-        layer_map.push({})
-        this.innerGraphs[parseInt(layer_index)].nodes.forEach((v,i)=>{
-          layer_map[parseInt(layer_index)][String(v.id)] = String(v.id)
-        })
-      }
-      console.log('old:',JSON.parse(JSON.stringify(layer_map)))
-      for(let layer_index in this.outerLinks){
-        //倒序给layer_map赋值
-        let ol = this.outerLinks[this.outerLinks.length - parseInt(layer_index) - 1].links;
-        ol.forEach((v,i)=>{
-          console.log(layer_map[this.outerLinks.length - parseInt(layer_index) - 1][String(v.source)])
-          console.log(layer_map[this.outerLinks.length - parseInt(layer_index)][String(v.target)])
-          layer_map[this.outerLinks.length - parseInt(layer_index) - 1][String(v.source)] = layer_map[this.outerLinks.length - parseInt(layer_index)][String(v.target)]
-          
-        })
-      }
-      console.log('new:',layer_map)
 
 
       /**
@@ -314,6 +288,147 @@ export default {
       return result
                                
     },
+
+
+    getWangZixiaoLayout(){
+      /**
+       * 
+       * 王子潇布局算法
+       * 
+       * 要求:1.跨层有连接关系的点必须是一对一的关系
+       *      2.下层点多于上层点
+       * 
+       */
+      let layer_data = ['layerID layerLabel']
+      let layer_map = []
+      let node_data = ['nodeID nodeAge nodeTenure nodeLevel nodeDepartment']
+      let edge_data = []
+      for(let layer_index in this.innerGraphs){
+        layer_data.push(`${parseInt(layer_index)+1} layer_name`);//构建layer data
+        //初始化layer_map
+        layer_map.push({})  
+      }
+      let whole_id_set = new Set()
+      this.innerGraphs[this.innerGraphs.length-1].nodes.forEach((v,i)=>{
+        layer_map[this.innerGraphs.length-1][String(v.id)] = (i + 1)
+        whole_id_set.add((i + 1))
+        node_data.push(`${(i + 1)} 0 0 0 0`)
+      })
+      for(let layer_index in this.outerLinks){
+        //倒序给layer_map赋值
+        let ol = this.outerLinks[this.outerLinks.length - parseInt(layer_index) - 1].links;
+        let upper = layer_map[this.outerLinks.length - parseInt(layer_index) - 1];//上层
+        let lower = layer_map[this.outerLinks.length - parseInt(layer_index)];//下层
+        
+        let new_id_set = new Set(whole_id_set) //保存了所有的布局用id
+        let raw_upper_id_queue = this.innerGraphs[this.outerLinks.length - parseInt(layer_index) - 1].nodes.map(v=>v.id)//保存了上层的innerGrah中的id
+        ol.forEach((v,i)=>{//利用边建立关系
+          upper[String(v.source)] = lower[String(v.target)]
+          new_id_set.delete(lower[String(v.target)])
+          raw_upper_id_queue.splice(raw_upper_id_queue.indexOf(parseInt(v.source)),1)
+        })
+        //给set中的剩余项赋值
+        for(let remain_id of Array.from(new_id_set)){
+          if(raw_upper_id_queue.length != 0){//raw_upper_id_queue还有剩余
+            upper[String(raw_upper_id_queue.pop())] = remain_id;
+          }
+          else{//raw_upper_id_queue无剩余
+            upper[String(remain_id)] = remain_id;
+          }
+        }
+      }
+      //添加edge_data
+      this.innerGraphs.forEach((v,layer_index)=>{
+        let links = v.links;
+        links.forEach((l)=>{
+            edge_data.push(`${layer_index+1} ${layer_map[layer_index][String(l.source)]} ${layer_map[layer_index][String(l.target)]} 1`)
+        })
+        
+      })
+      
+      console.log('layer_map:',JSON.parse(JSON.stringify(layer_map)))
+      console.log('layer_data:',layer_data)
+      console.log('node_data:',node_data)
+      console.log('edge_data:',edge_data)
+
+    },
+
+    getForceLayout(nodes,links){
+      for(let layer_index in this.innerGraphs){
+          let _nodes = JSON.parse(JSON.stringify(nodes));
+          let _links = JSON.parse(JSON.stringify(links));
+
+
+          /**
+           * 
+           * 力导引布局
+           * 
+           * 要求:无要求
+           * 
+           */
+          let simulation = d3.forceSimulation()
+                              .nodes(_nodes)
+
+
+          let linkForce = d3.forceLink(_links).id(d=>d.id)
+
+          simulation.force('charge_force', d3.forceManyBody().strength(-50))
+                    .force('center_force', d3.forceCenter(0,0))//中心点为原点
+                    .force('links', linkForce)
+
+          simulation.stop();
+          simulation.tick(300);
+
+
+
+          /**
+           * 
+           * 变换坐标到中心为(0.5*initAreaWidth,0.5*initAreaHeight)，边界适应边框。
+           * 
+           */
+          const maxX = Math.max(..._nodes.map(v=>v.x))
+          const minX = Math.min(..._nodes.map(v=>v.x))
+          const maxY = Math.max(..._nodes.map(v=>v.y))
+          const minY = Math.min(..._nodes.map(v=>v.y))
+          //变换
+          const xScale = d3.scaleLinear()
+            .domain([minX,maxX])
+            .range([this.baseRadius[layer_index] + this.initInnerPadding,this.initAreaWidth - this.baseRadius[layer_index] - this.initInnerPadding])
+          const yScale = d3.scaleLinear()
+            .domain([minY,maxY])
+            .range([this.baseRadius[layer_index] + this.initInnerPadding,this.initAreaHeight - this.baseRadius[layer_index] - this.initInnerPadding])
+          
+          _nodes.forEach((v,i)=>{
+            _nodes[i].x = xScale(_nodes[i].x)
+            _nodes[i].y = yScale(_nodes[i].y)
+          })
+
+
+          /**
+           * 
+           * 打包布局结果
+           * 
+           */
+          let result = {
+            'nodes':_nodes.map(v=>{
+                      return {
+                        'id':v.id,
+                        'x':v.x,
+                        'y':v.y,
+                      }
+                    }),
+            'links':_links.map(v=>{
+                      return {
+                        'source':{'id':v.source.id,'x':v.source.x,'y':v.source.y},
+                        'target':{'id':v.target.id,'x':v.target.x,'y':v.target.y},
+                      }
+                    }),
+          }
+
+          return result 
+      }
+    },
+
 
     drawSingleLayer(layer_index){//绘制/更新单层
         /**
@@ -446,8 +561,6 @@ export default {
         //               +`L ${borderAnchor[0]} ${borderAnchor[1]}`)
         //     .attr('fill', '#1f8bd4')
         //     .attr('fill-opacity', 0)
-
-
 
         //绑定zoom事件
         const zoom = d3.zoom()
@@ -606,6 +719,7 @@ export default {
 
 
 <style scoped>
+  /* 容器样式 */
   .multi_layer_container{
     height:100%;
     width: 100%;
@@ -616,4 +730,11 @@ export default {
   .multi_layer_canva{
     width:100%;
   }
+
+  /* 动态样式 */
+  .multi_layer_circle_chosen{
+
+  }
+
+
 </style>
