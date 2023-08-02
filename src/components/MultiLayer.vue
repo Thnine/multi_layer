@@ -1,5 +1,5 @@
 <template>
-  <div ref="multi_layer_container" class="multi_layer_container">
+  <div v-loading="isLoading" ref="multi_layer_container" class="multi_layer_container">
     <svg xmlns="http://www.w3.org/2000/svg" class="multi_layer_canva"></svg>
     <div v-for="(item,index) in innerGraphs" :key="index" ref="multi_layer_controllerBox" :class="`multi_layer_controllerBox-${index}`" style="position:absolute;display:flex;flex-direction:column;">
         <el-popover
@@ -47,7 +47,7 @@
 
 import * as d3 from 'd3'
 import {nanoid} from 'nanoid'
-import {Button,Popover,Row,Col,InputNumber} from 'element-ui';
+import {Button,Popover,Row,Col,InputNumber,Loading} from 'element-ui';
 import Vue from 'vue'
 import 'element-ui/lib/theme-chalk/index.css';
 import axios from "axios"
@@ -58,6 +58,7 @@ Vue.component(Popover.name, Popover);
 Vue.component(Row.name, Row);
 Vue.component(Col.name, Col);
 Vue.component(InputNumber.name, InputNumber);
+Vue.use(Loading.directive);
 
 export default {
   name: 'MultiLayer',
@@ -128,6 +129,9 @@ export default {
       borderWidth:0,//边框的宽度
       initAreaWidth:0,//initArea：在折叠前，plot应该占据的空间，initArea的宽度
       initAreaHeight:0,//initArea的高度
+
+      //其他数据
+      isLoading:false,//是否加入加载页面
     }
   },
 
@@ -163,6 +167,9 @@ export default {
       if(this.innerGraphs === undefined || this.innerGraphs === null || this.innerGraphs.length == 0)
         return;
 
+      //启用加载遮罩
+      this.isLoading = true;
+
       //清理
       const svg = d3.select(this.$refs['multi_layer_container']).select('.multi_layer_canva');
       svg.selectAll('*').remove();
@@ -184,13 +191,18 @@ export default {
       //设置布局
       await this.setLayout();
 
-      for(let layer in this.innerGraphs){
+
+      //绘图
+      for(let layer in this.innerGraphs){//层内
         this.drawSingleLayer(parseInt(layer));
       }
 
-      for(let start_layer in this.outerLinks){
+      for(let start_layer in this.outerLinks){//跨层连接边
         this.drawSingleOuterLinks(parseInt(start_layer));
       }
+
+      //关闭加载遮罩
+      this.isLoading = false;
 
       
     },
@@ -246,6 +258,9 @@ export default {
        *      2.下层点多于上层点
        * 
        */
+
+      
+
       let layer_data = ['layerID layerLabel']
       let layer_map = []
       let node_data = ['nodeID nodeAge nodeTenure nodeLevel nodeDepartment']
