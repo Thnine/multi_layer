@@ -63,11 +63,11 @@ export default {
   name: 'MultiLayer',
   data () {
     return {
-      //根本数据
+      //元数据
       nanoid:undefined,//组件的id标识符
 
 
-      //绘图数据
+      //根本数据
       innerGraphs:[],//每层的内部数据
       // [
       //   {
@@ -89,7 +89,15 @@ export default {
       // ]
 
 
-      //临时数据
+      //主要数据
+      layoutData:[],//层内点和边布局位置信息
+      // [
+      //   {
+      //     'nodes':[{'id':1,'x':15.2,'y':16.9},...],
+      //     'links':[{'source':{'id':3,'x':14.1,'y':14.4},'target':{'id':2,'x':9.145,'y':0.421}},...]
+      //   },
+      //   ...
+      // ]
 
 
       //配置项，可人为修改
@@ -113,7 +121,7 @@ export default {
       innerLinkStrokeRadio:0.5,//层内的link的宽度对半径的比例
 
 
-      //计算尺寸
+      //计算尺寸数据
       svgWidth:0,//svg的宽度
       partWidth:0,//边框BBox的宽度
       partHeight:0,//边框的BBox的高度
@@ -134,6 +142,7 @@ export default {
       //绑定数据
       this.innerGraphs = JSON.parse(JSON.stringify(innerGraphs));
       this.outerLinks = JSON.parse(JSON.stringify(outerLinks));
+      
       console.log('innerGraphs',this.innerGraphs)
       console.log('outerLinks:',this.outerLinks)
 
@@ -145,9 +154,11 @@ export default {
       for(let i in this.outerLinks){
         this.outerLinkWidth.push(this.initOuterLinkWidth);
       }
+      this.layoutData = [];
+
     },
 
-    draw(){//重绘整张图
+    async draw(){//重绘整张图
 
       if(this.innerGraphs === undefined || this.innerGraphs === null || this.innerGraphs.length == 0)
         return;
@@ -169,6 +180,9 @@ export default {
 
       //适应容器大小
       this.fitSize();
+
+      //设置布局
+      await this.setLayout();
 
       for(let layer in this.innerGraphs){
         this.drawSingleLayer(parseInt(layer));
@@ -214,83 +228,16 @@ export default {
 
     },
 
-    setLayout(nodes,links,layer_index){//设定图布局，返回恰好适应边框的图布局，布局的左上角(0,0)在画布中对应borderAnchor
-      let _nodes = JSON.parse(JSON.stringify(nodes));
-      let _links = JSON.parse(JSON.stringify(links));
+    async setLayout(){//设定图布局
 
+        // this.getForceDirectedLayout();//力导引布局
 
-      /**
-       * 
-       * 力导引布局
-       * 
-       * 要求:无要求
-       * 
-       */
-      let simulation = d3.forceSimulation()
-                          .nodes(_nodes)
+        await this.getWangZixiaoLayout();//王子潇布局
 
-
-      let linkForce = d3.forceLink(_links).id(d=>d.id)
-
-      simulation.force('charge_force', d3.forceManyBody().strength(-50))
-                .force('center_force', d3.forceCenter(0,0))//中心点为原点
-                .force('links', linkForce)
-
-      simulation.stop();
-      simulation.tick(300);
-
-
-
-      /**
-       * 
-       * 变换坐标到中心为(0.5*initAreaWidth,0.5*initAreaHeight)，边界适应边框。
-       * 
-       */
-      const maxX = Math.max(..._nodes.map(v=>v.x))
-      const minX = Math.min(..._nodes.map(v=>v.x))
-      const maxY = Math.max(..._nodes.map(v=>v.y))
-      const minY = Math.min(..._nodes.map(v=>v.y))
-      //变换
-      const xScale = d3.scaleLinear()
-        .domain([minX,maxX])
-        .range([this.baseRadius[layer_index] + this.initInnerPadding,this.initAreaWidth - this.baseRadius[layer_index] - this.initInnerPadding])
-      const yScale = d3.scaleLinear()
-        .domain([minY,maxY])
-        .range([this.baseRadius[layer_index] + this.initInnerPadding,this.initAreaHeight - this.baseRadius[layer_index] - this.initInnerPadding])
-      
-      _nodes.forEach((v,i)=>{
-        _nodes[i].x = xScale(_nodes[i].x)
-        _nodes[i].y = yScale(_nodes[i].y)
-      })
-
-
-      /**
-       * 
-       * 打包布局结果
-       * 
-       */
-      let result = {
-        'nodes':_nodes.map(v=>{
-                  return {
-                    'id':v.id,
-                    'x':v.x,
-                    'y':v.y,
-                  }
-                }),
-        'links':_links.map(v=>{
-                  return {
-                    'source':{'id':v.source.id,'x':v.source.x,'y':v.source.y},
-                    'target':{'id':v.target.id,'x':v.target.x,'y':v.target.y},
-                  }
-                }),
-      }
-
-      return result
-                               
     },
 
 
-    getWangZixiaoLayout(){
+    async getWangZixiaoLayout(){
       /**
        * 
        * 王子潇布局算法
@@ -346,17 +293,93 @@ export default {
         
       })
       
-      console.log('layer_map:',JSON.parse(JSON.stringify(layer_map)))
-      console.log('layer_data:',layer_data)
-      console.log('node_data:',node_data)
-      console.log('edge_data:',edge_data)
+      // console.log('layer_map:',JSON.parse(JSON.stringify(layer_map)))
+      // console.log('layer_data:',layer_data)
+      // console.log('node_data:',node_data)
+      // console.log('edge_data:',edge_data)
+
+      await axios({
+        url:'api/getWangZixiaoLayout',
+        method:"POST",
+        data:{
+          'layer_data':layer_data,
+          'node_data':node_data,
+          'edge_data':edge_data,
+        }
+      }).then((response)=>{
+        console.log('response:',response.data)
+        const data = response.data
+        for(let layer_index = 0;layer_index < data.length;layer_index++){
+          this.layoutData.push({
+            'nodes':[],
+            'links':[],
+          })
+          //装填点
+          this.innerGraphs[layer_index].nodes.forEach(v=>{
+            this.layoutData[layer_index].nodes.push({
+              'id':v.id,
+              'x':data[layer_index][layer_map[layer_index][String(v.id)] - 1][0],
+              'y':data[layer_index][layer_map[layer_index][String(v.id)] - 1][1]
+            })
+          })
+
+          /**
+           * 
+           * 变换点坐标到中心为(0.5*initAreaWidth,0.5*initAreaHeight)，边界适应边框。
+           * 
+           */
+          const maxX = Math.max(...this.layoutData[layer_index].nodes.map(v=>v.x))
+          const minX = Math.min(...this.layoutData[layer_index].nodes.map(v=>v.x))
+          const maxY = Math.max(...this.layoutData[layer_index].nodes.map(v=>v.y))
+          const minY = Math.min(...this.layoutData[layer_index].nodes.map(v=>v.y))
+          //变换
+          const xScale = d3.scaleLinear()
+            .domain([minX,maxX])
+            .range([this.baseRadius[layer_index] + this.initInnerPadding,this.initAreaWidth - this.baseRadius[layer_index] - this.initInnerPadding])
+          const yScale = d3.scaleLinear()
+            .domain([minY,maxY])
+            .range([this.baseRadius[layer_index] + this.initInnerPadding,this.initAreaHeight - this.baseRadius[layer_index] - this.initInnerPadding])
+          
+          this.layoutData[layer_index].nodes.forEach((v,i)=>{
+            this.layoutData[layer_index].nodes[i].x = xScale(this.layoutData[layer_index].nodes[i].x)
+            this.layoutData[layer_index].nodes[i].y = yScale(this.layoutData[layer_index].nodes[i].y)
+          })
+
+          //装填边
+          this.innerGraphs[layer_index].links.forEach(l=>{
+              let tempLink = {}
+              this.layoutData[layer_index].nodes.forEach(v=>{
+                if(parseInt(v.id)==parseInt(l.source)){//source
+                  tempLink['source']={
+                    'id':v.id,
+                    'x':v.x,
+                    'y':v.y
+                  }
+                }
+                else if(parseInt(v.id)==parseInt(l.target)){//target
+                  tempLink['target']={
+                    'id':v.id,
+                    'x':v.x,
+                    'y':v.y
+                  }
+                }
+              })
+              this.layoutData[layer_index].links.push(tempLink)
+          })
+          
+        }
+        console.log('layout:',this.layoutData)
+      }).catch((err)=>{
+        console.log('err:',err)
+      })
 
     },
 
-    getForceLayout(nodes,links){
+    getForceDirectedLayout(){//获取恰好适应边框的力导引布局，布局的左上角(0,0)在画布中对应borderAnchor
+
       for(let layer_index in this.innerGraphs){
-          let _nodes = JSON.parse(JSON.stringify(nodes));
-          let _links = JSON.parse(JSON.stringify(links));
+          let _nodes = JSON.parse(JSON.stringify(this.innerGraphs[layer_index].nodes));
+          let _links = JSON.parse(JSON.stringify(this.innerGraphs[layer_index].links));
 
 
           /**
@@ -425,7 +448,8 @@ export default {
                     }),
           }
 
-          return result 
+          this.layoutData.push(result)
+          
       }
     },
 
@@ -484,9 +508,8 @@ export default {
          */
         let nodes = this.innerGraphs[layer_index].nodes;
         let innerLinks = this.innerGraphs[layer_index].links;
-        let layoutResult = this.setLayout(nodes,innerLinks,layer_index);
-        let nodesPos = layoutResult['nodes']
-        let innerLinksPos = layoutResult['links']
+        let nodesPos = this.layoutData[layer_index].nodes
+        let innerLinksPos = this.layoutData[layer_index].links
 
 
         //定义遮罩

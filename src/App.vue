@@ -22,8 +22,8 @@ export default {
 
       d3.json('static/links.json').then(links=>{
         d3.json('static/nodes.json').then(nodes=>{
-          console.log('links:',links)
-          console.log('nodes:',nodes)
+          // console.log('links:',links)
+          // console.log('nodes:',nodes)
           //处理数据
           let outerLinks = []
           let innerGraphs = []
