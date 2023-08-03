@@ -76,14 +76,14 @@ export default {
       //   },
       //   {
       //     'nodes':[{'id':17},...],
-      //     'links':[{'source':23,'target':46},...],
+      //     'links':[{'source':23,'target':46,'type':'dir'},...],//type表示方向性，dir为有向，undir为无向
       //   },
       //   ...
       // ]
       // 注意：不同层的nodes的id也必须保持独特性
       outerLinks:[],//层之间的连接数据
       // [
-      //   {'links':[{'source':1,'target':17},...],},//source是上层,target是下层
+      //   {'links':[{'source':1,'target':17,'type':'undir'},...],},//source是上层,target是下层，//type表示方向性，dir为有向，undir为无向
       //   {...},
       //   ...
       // ]
@@ -307,7 +307,7 @@ export default {
           'edge_data':edge_data,
         }
       }).then((response)=>{
-        console.log('response:',response.data)
+        console.log('layout_response:',response.data)
         const data = response.data
         for(let layer_index = 0;layer_index < data.length;layer_index++){
           this.layoutData.push({
@@ -347,13 +347,13 @@ export default {
 
           //装填边
           this.innerGraphs[layer_index].links.forEach(l=>{
-              let tempLink = {}
+              let tempLink = {'type':l.type}
               this.layoutData[layer_index].nodes.forEach(v=>{
                 if(parseInt(v.id)==parseInt(l.source)){//source
                   tempLink['source']={
                     'id':v.id,
                     'x':v.x,
-                    'y':v.y
+                    'y':v.y,
                   }
                 }
                 else if(parseInt(v.id)==parseInt(l.target)){//target
@@ -444,6 +444,7 @@ export default {
                       return {
                         'source':{'id':v.source.id,'x':v.source.x,'y':v.source.y},
                         'target':{'id':v.target.id,'x':v.target.x,'y':v.target.y},
+                        'type':v.type
                       }
                     }),
           }
@@ -549,7 +550,12 @@ export default {
           .join('line')
           .attr('stroke-width', this.baseRadius[layer_index] * this.innerLinkStrokeRadio)
           .style('stroke', "#666666")
-          .attr('marker-end',`url(#multi_layer_inner_arrow-${layer_index}-${this.nanoid})`)
+          .attr('marker-end',(d)=>{
+            if(d.type == 'dir')
+              return `url(#multi_layer_inner_arrow-${layer_index}-${this.nanoid})`
+            else if(d.type == 'undir')
+              return null
+          })
           .attr('x1', (d) => d.source.x + borderAnchor[0])
           .attr('y1', (d) => d.source.y + borderAnchor[1])
           .attr('x2', (d) => d.target.x + borderAnchor[0])
@@ -756,7 +762,7 @@ export default {
 
   /* 动态样式 */
   .multi_layer_circle_chosen{
-
+    stroke:'red',
   }
 
 
