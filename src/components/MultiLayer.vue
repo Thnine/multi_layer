@@ -18,7 +18,7 @@
                 v-model="baseRadius[index]"
                 :min="0.5"
                 :step="0.5"
-                @change="radiusChange(index)"
+                @change="handleRadiusChange(index)"
                 ></el-input-number>
             </el-col>
           </el-row>
@@ -30,7 +30,7 @@
                 v-model="outerLinkWidth[index]"
                 :min="0.5"
                 :step="0.5"
-                @change="outLinkWidthChange(index)"
+                @change="handleOutLinkWidthChange(index)"
                 ></el-input-number>
             </el-col>
           </el-row>
@@ -94,8 +94,8 @@ export default {
       layoutData:[],//层内点和边布局位置信息
       // [
       //   {
-      //     'nodes':[{'id':1,'x':15.2,'y':16.9},...],
-      //     'links':[{'source':{'id':3,'x':14.1,'y':14.4},'target':{'id':2,'x':9.145,'y':0.421}},...]
+      //     'nodes':[{'id':1,'x':15.2,'y':16.9,type:'undir'},...],
+      //     'links':[{'source':{'id':3,'x':14.1,'y':14.4,type:'dir'},'target':{'id':2,'x':9.145,'y':0.421,'type':'undir'}},...]
       //   },
       //   ...
       // ]
@@ -112,7 +112,7 @@ export default {
       plotSkew:45,//图像的倾斜角度（空间上的倾斜），单位deg
       WHRadio:0.5,//边框BBox的长宽比
       unitMargin:40,//边框之间的上下间距
-      initRadius:6,//点的初始半径
+      initRadius:6,//点的初始基准半径
       baseRadius:[],//点的基准半径 [radius1,radius2,...]
       initOuterLinkWidth:3.5,//初始的跨层连线宽度
       outerLinkWidth:[],//跨层连线的宽度
@@ -132,6 +132,7 @@ export default {
 
       //其他数据
       isLoading:false,//是否加入加载页面
+      chosenData:[],//被选择的数据，每层的选择数据的id构成的一个Set，这些数组依序列在chosenData中：[[1,3,4],[22,24],...]
     }
   },
 
@@ -151,15 +152,18 @@ export default {
       console.log('outerLinks:',this.outerLinks)
 
       //清理之前的数据，并且初始化一些数据
-      this.baseRadius.length = 0;
+      this.baseRadius.length = 0;//baseRadius
       for(let i in this.innerGraphs){
-        this.baseRadius.push(this.initRadius)
+        this.baseRadius.push(this.initRadius);
       }
-      for(let i in this.outerLinks){
+      for(let i in this.outerLinks){//outerLinkWidth
         this.outerLinkWidth.push(this.initOuterLinkWidth);
       }
-      this.layoutData = [];
-
+      this.layoutData = [];//layoutData
+      this.chosenData.length = 0;//chosenData
+      for(let i in this.innerGraphs){
+        this.chosenData.push(new Set())
+      }
     },
 
     async draw(){//重绘整张图
@@ -240,7 +244,7 @@ export default {
 
     },
 
-    async setLayout(){//设定图布局
+    async setLayout(){//布局算法入口
 
         // this.getForceDirectedLayout();//力导引布局
 
@@ -248,11 +252,10 @@ export default {
 
     },
 
-
-    async getWangZixiaoLayout(){
+    async getWangZixiaoLayout(){//王子潇布局
       /**
-       * 
-       * 王子潇布局算法
+       *
+       * 恰好适应边框，布局的左上角(0,0)在画布中对应borderAnchor
        * 
        * 要求:1.跨层有连接关系的点必须是一对一的关系
        *      2.下层点多于上层点
@@ -390,20 +393,21 @@ export default {
 
     },
 
-    getForceDirectedLayout(){//获取恰好适应边框的力导引布局，布局的左上角(0,0)在画布中对应borderAnchor
+    getForceDirectedLayout(){//力导引布局
+
+        /**
+         * 
+         * 恰好适应边框，布局的左上角(0,0)在画布中对应borderAnchor
+         * 
+         * 要求:无要求
+         * 
+         */
 
       for(let layer_index in this.innerGraphs){
           let _nodes = JSON.parse(JSON.stringify(this.innerGraphs[layer_index].nodes));
           let _links = JSON.parse(JSON.stringify(this.innerGraphs[layer_index].links));
 
 
-          /**
-           * 
-           * 力导引布局
-           * 
-           * 要求:无要求
-           * 
-           */
           let simulation = d3.forceSimulation()
                               .nodes(_nodes)
 
@@ -468,7 +472,6 @@ export default {
           
       }
     },
-
 
     drawSingleLayer(layer_index){//绘制/更新单层
         /**
@@ -588,23 +591,20 @@ export default {
           .attr("cy",(d)=>d.y + borderAnchor[1])
           .classed(`multi_layer_innerCircles-${layer_index}`,true)
           .style('cursor','pointer')
-          .on('click',(d,i)=>{
-            console.log(d.id)
+          .on('click',(d,i)=>{//点击选择和取消选择
+            if(this.chosenData[layer_index].has(d.id)){
+              this.chosenData[layer_index].delete(d.id)
+            }
+            else{
+              this.chosenData[layer_index].add(d.id);
+            }
+            this.updateInnerInfo(layer_index)
           })
 
         //倾斜
         innerPlot.style('transform-origin',`${borderAnchor[0]}px ${borderAnchor[1]}px`)
         innerPlot.style('transform', `rotateX(${this.plotSkew}deg)`)
         
-        //zoom的交互操作遮罩
-        // const zoomMask = innerArea.append('path')
-        //     .attr('d', `M ${borderAnchor[0]} ${borderAnchor[1]} `
-        //               +`L ${borderAnchor[0] + this.borderWidth} ${borderAnchor[1]} ` 
-        //               +`L ${anchor[0] + this.borderWidth} ${anchor[1] + this.partHeight} `
-        //               +`L ${anchor[0]} ${anchor[1] + this.partHeight} `
-        //               +`L ${borderAnchor[0]} ${borderAnchor[1]}`)
-        //     .attr('fill', '#1f8bd4')
-        //     .attr('fill-opacity', 0)
 
         //绑定zoom事件
         const zoom = d3.zoom()
@@ -703,8 +703,28 @@ export default {
                   })      
 
     },
-    
-    radiusChange(layer_index){//某一层的radius被修改的回调函数
+
+    resetPos(layer_index){//对某层进行复位
+      this.drawSingleLayer(layer_index);
+      this.drawSingleOuterLinks(layer_index-1);
+      this.drawSingleOuterLinks(layer_index)
+    },
+
+
+    updateInnerInfo(layer_index){//更新某一层元素的元信息（class等）
+      const svg = d3.select(this.$refs['multi_layer_container']).select('.multi_layer_canva');
+      const innerPlot = svg.select(`.multi_layer_innerPlot-${layer_index}`);
+      const circles = innerPlot.selectAll(`.multi_layer_innerCircles-${layer_index}`)
+      //更新点的选中样式
+      circles.attr('stroke',(d,i)=>{
+        if(this.chosenData[layer_index].has(d.id))
+          return 'red';
+        return 'white';
+      })
+
+    },
+
+    handleRadiusChange(layer_index){//某一层的radius被修改的回调函数
       const svg = d3.select(this.$refs['multi_layer_container']).select('.multi_layer_canva');
       const layerArea = svg.select(`.multi_layer_layerArea-${layer_index}`)
       const innerArea = layerArea.select(`.multi_layer_innerArea-${layer_index}`)
@@ -736,16 +756,10 @@ export default {
       innerLinks.attr('stroke-width', this.baseRadius[layer_index] * this.innerLinkStrokeRadio)
     },
 
-    resetPos(layer_index){//对某层进行复位
-      this.drawSingleLayer(layer_index);
+    handleOutLinkWidthChange(layer_index){//某一层OuterLinks的宽度被修改后的回调函数
       this.drawSingleOuterLinks(layer_index-1);
       this.drawSingleOuterLinks(layer_index)
     },
-    outLinkWidthChange(layer_index){//修改某层OutLinks的宽度
-      this.drawSingleOuterLinks(layer_index-1);
-      this.drawSingleOuterLinks(layer_index)
-    }
-
 
   },
 
@@ -776,9 +790,6 @@ export default {
   }
 
   /* 动态样式 */
-  .multi_layer_circle_chosen{
-    stroke:'red',
-  }
 
 
 </style>
