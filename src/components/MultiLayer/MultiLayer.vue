@@ -1,6 +1,10 @@
 <template>
   <div v-loading="isLoading" ref="multi_layer_container" class="multi_layer_container">
+    
+    <!--画布-->
     <svg xmlns="http://www.w3.org/2000/svg" class="multi_layer_canva"></svg>
+
+    <!--控制器-->
     <div v-for="(item,index) in innerGraphs" :key="index" ref="multi_layer_controllerBox" :class="`multi_layer_controllerBox-${index}`" style="position:absolute;display:flex;flex-direction:column;">
         <el-popover
           placement="left"
@@ -11,8 +15,17 @@
           </el-row>
           <hr style="margin-bottom:20px;border:2px solid lightgray;height: 0;"/>
           <el-row type="flex" align="center" style="margin-bottom:20px">
+            <el-col :offset="2" :span="10" style="display:flex;align-items:center">模式：</el-col>
+            <el-col :offset="0" :span="10" style="display:flex;justify-content:center">
+              <el-radio-group size="mini" v-model="drag_mode[index]">
+                <el-radio-button label="缩放"></el-radio-button>
+                <el-radio-button label="圈选"></el-radio-button>
+              </el-radio-group>
+            </el-col>
+          </el-row>
+          <el-row type="flex" align="center" style="margin-bottom:20px">
             <el-col :offset="2" :span="10" style="display:flex;align-items:center">点基准半径：</el-col>
-            <el-col :offset="0" :span="10">
+            <el-col :offset="0" :span="10" style="display:flex;justify-content:center">
               <el-input-number 
                 size="mini" 
                 v-model="baseRadius[index]"
@@ -24,7 +37,7 @@
           </el-row>
           <el-row v-show="index != innerGraphs.length-1" type="flex" align="center">
             <el-col :offset="2" :span="10" style="display:flex;align-items:center">跨层线宽(下层)：</el-col>
-            <el-col :offset="0" :span="10">
+            <el-col :offset="0" :span="10" style="display:flex;justify-content:center">
               <el-input-number 
                 size="mini" 
                 v-model="outerLinkWidth[index]"
@@ -38,6 +51,7 @@
         </el-popover>
         <el-button type="primary" icon="el-icon-full-screen" circle @click="resetPos(index)" style="margin-top:10px;"></el-button>
     </div>
+
   </div>
 </template>
 
@@ -47,10 +61,12 @@
 
 import * as d3 from 'd3'
 import {nanoid} from 'nanoid'
-import {Button,Popover,Row,Col,InputNumber,Loading} from 'element-ui';
+import {Button,Popover,Row,Col,InputNumber,Loading,RadioButton,RadioGroup} from 'element-ui';
 import Vue from 'vue'
 import 'element-ui/lib/theme-chalk/index.css';
 import axios from "axios"
+import lasso from "./d3-lasso";
+
 
 
 Vue.component(Button.name, Button);
@@ -58,13 +74,15 @@ Vue.component(Popover.name, Popover);
 Vue.component(Row.name, Row);
 Vue.component(Col.name, Col);
 Vue.component(InputNumber.name, InputNumber);
+Vue.component(RadioButton.name, RadioButton);
+Vue.component(RadioGroup.name, RadioGroup);
 Vue.use(Loading.directive);
 
 export default {
   name: 'MultiLayer',
   data () {
     return {
-      //元数据
+      //标识数据
       nanoid:undefined,//组件的id标识符
 
 
@@ -113,16 +131,15 @@ export default {
       WHRadio:0.5,//边框BBox的长宽比
       unitMargin:40,//边框之间的上下间距
       initRadius:6,//点的初始基准半径
-      baseRadius:[],//点的基准半径 [radius1,radius2,...]
       initOuterLinkWidth:3.5,//初始的跨层连线宽度
-      outerLinkWidth:[],//跨层连线的宽度
       initInnerPadding:30,//每层的plot在初始的适应状态下相对于initArea的padding（水平方向准，垂直方向不一定准）
       innerArrowSizeRadio:1.7,//层内连线的箭头尺寸对半径的比例
       innerCircleStrokeRadio:0.3,//层内点的stroke-width对半径的比例
       innerLinkStrokeRadio:0.5,//层内的link的宽度对半径的比例
+      initDragMode:'缩放',//初始
 
 
-      //计算尺寸数据
+      //尺寸数据
       svgWidth:0,//svg的宽度
       partWidth:0,//边框BBox的宽度
       partHeight:0,//边框的BBox的高度
@@ -133,6 +150,11 @@ export default {
       //其他数据
       isLoading:false,//是否加入加载页面
       chosenData:[],//被选择的数据，每层的选择数据的id构成的一个Set，这些数组依序列在chosenData中：[[1,3,4],[22,24],...]
+      outerLinkWidth:[],//跨层连线的宽度
+      baseRadius:[],//点的基准半径 [radius1,radius2,...]
+      drag_mode:[],//点的拖动交互代表的模式，['缩放','圈选',...]
+      zooms:[],//zoom工具（缩放）
+      lassos:[]//lasso工具（圈选）
     }
   },
 
@@ -163,6 +185,18 @@ export default {
       this.chosenData.length = 0;//chosenData
       for(let i in this.innerGraphs){
         this.chosenData.push(new Set())
+      }
+      this.drag_mode.length = 0;//drag_mode
+      for(let i in this.innerGraphs){
+        this.drag_mode.push(this.initDragMode)
+      }
+      this.zooms.length = 0;//zooms
+      for(let i in this.innerGraphs){
+        this.zooms.push(undefined)
+      }
+      this.lassos.length = 0;//lassos
+      for(let i in this.innerGraphs){
+        this.lassos.push(undefined)
       }
     },
 
@@ -606,10 +640,12 @@ export default {
         innerPlot.style('transform', `rotateX(${this.plotSkew}deg)`)
         
 
-        //绑定zoom事件
+        //创建新的zoom工具，并且绑定zoom事件
         const zoom = d3.zoom()
                        .scaleExtent([0.1, 40])
                        .translateExtent([[-10000, -10000], [10000, 10000]])
+        this.zooms[layer_index] = zoom;
+        if()
                        .on("zoom",()=>{
                           zoomG.attr("transform",d3.event.transform)                                              
                           this.drawSingleOuterLinks(layer_index)
@@ -721,6 +757,8 @@ export default {
           return 'red';
         return 'white';
       })
+      //更新drag_mode
+
 
     },
 

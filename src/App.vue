@@ -7,7 +7,7 @@
 </template>
 
 <script>
-import MultiLayer from './components/MultiLayer'
+import MultiLayer from './components/MultiLayer/MultiLayer'
 import * as d3 from 'd3';
 import {groupSort,group,sort} from 'd3-array'
 export default {
