@@ -5,7 +5,7 @@
     <svg xmlns="http://www.w3.org/2000/svg" class="multi_layer_canva"></svg>
 
     <!--控制器-->
-    <div v-for="(item,index) in innerGraphs" :key="index" ref="multi_layer_controllerBox" :class="`multi_layer_controllerBox-${index}`" style="position:absolute;display:flex;flex-direction:column;">
+    <div v-for="(item,index) in innerGraphs" :key="index" ref="multi_layer_controllerBox" :class="`multi_layer_controllerBox-${index}`" style="position:absolute;display:flex;flex-direction:column;align-items:center">
         <el-popover
           placement="left"
           width="300"
@@ -17,7 +17,7 @@
           <el-row type="flex" align="center" style="margin-bottom:20px">
             <el-col :offset="2" :span="10" style="display:flex;align-items:center">模式：</el-col>
             <el-col :offset="0" :span="10" style="display:flex;justify-content:center">
-              <el-radio-group size="mini" v-model="drag_mode[index]">
+              <el-radio-group size="mini" v-model="drag_mode[index]" @input="handleDragModeChange(index)">
                 <el-radio-button label="缩放"></el-radio-button>
                 <el-radio-button label="圈选"></el-radio-button>
               </el-radio-group>
@@ -50,24 +50,42 @@
           <el-button slot="reference" type="primary" icon="el-icon-s-tools" circle></el-button>
         </el-popover>
         <el-button type="primary" icon="el-icon-full-screen" circle @click="resetPos(index)" style="margin-top:10px;"></el-button>
+        <el-button type="primary" icon="el-icon-delete" circle @click="resetChosen(index)" style="margin-top:10px;margin-left:0px;"></el-button>
+
     </div>
 
+    <!--悬浮信息版-->
+    <InfoPanel :style="InfoPanelStyle" v-show="InfoPanelVisible" ref="infoPanel"/>
   </div>
+
+
+
+
 </template>
 
 
 
 <script>
 
+/**
+ * 
+ * 事件：
+ *      @exportChosenData:导出一个数组，每一个元素是每层的id数组。这些元素依层次排列
+ * 
+ * 
+ */
+
+
+
+
 import * as d3 from 'd3'
 import {nanoid} from 'nanoid'
 import {Button,Popover,Row,Col,InputNumber,Loading,RadioButton,RadioGroup} from 'element-ui';
+import InfoPanel from './InfoPanel.vue'
 import Vue from 'vue'
 import 'element-ui/lib/theme-chalk/index.css';
 import axios from "axios"
 import lasso from "./d3-lasso";
-
-
 
 Vue.component(Button.name, Button);
 Vue.component(Popover.name, Popover);
@@ -80,6 +98,7 @@ Vue.use(Loading.directive);
 
 export default {
   name: 'MultiLayer',
+  components:{InfoPanel},
   data () {
     return {
       //标识数据
@@ -106,6 +125,12 @@ export default {
       //   {...},
       //   ...
       // ]
+
+
+      //innerGraphs和outerLinks的每个点和边的数据对象还可以附着一个键值为message的对象，用于展示消息面板
+      //格式如下：
+      //    message:
+
 
 
       //主要数据
@@ -154,7 +179,12 @@ export default {
       baseRadius:[],//点的基准半径 [radius1,radius2,...]
       drag_mode:[],//点的拖动交互代表的模式，['缩放','圈选',...]
       zooms:[],//zoom工具（缩放）
-      lassos:[]//lasso工具（圈选）
+      lassos:[],//lasso工具（圈选）
+      InfoPanelVisible:false,//信息板的可见变量
+      InfoPanelStyle:{
+        top:'0px',
+        left:'0px'
+      },//信息版的动态style
     }
   },
 
@@ -198,6 +228,11 @@ export default {
       for(let i in this.innerGraphs){
         this.lassos.push(undefined)
       }
+      this.InfoPanelVisible = false;//InfoPanelVisible
+      this.InfoPanelStyle = {//InfoPanelStyle
+        top:'0px',
+        left:'0px',
+      };
     },
 
     async draw(){//重绘整张图
@@ -280,6 +315,15 @@ export default {
 
     async setLayout(){//布局算法入口
 
+
+        /**
+         * 
+         * 布局算法需要给layoutData传入innerGraph类似结构的数据，但是
+         * 每个点对象有x,y属性，被条边有类似simulation的links的source
+         * 和target数据
+         * 
+         */
+
         // this.getForceDirectedLayout();//力导引布局
 
         await this.getWangZixiaoLayout();//王子潇布局
@@ -359,7 +403,6 @@ export default {
           'edge_data':edge_data,
         }
       }).then((response)=>{
-        console.log('layout_response:',response.data)
         const data = response.data
         for(let layer_index = 0;layer_index < data.length;layer_index++){
           this.layoutData.push({
@@ -368,11 +411,10 @@ export default {
           })
           //装填点
           this.innerGraphs[layer_index].nodes.forEach(v=>{
-            this.layoutData[layer_index].nodes.push({
-              'id':v.id,
-              'x':data[layer_index][layer_map[layer_index][String(v.id)] - 1][0],
-              'y':data[layer_index][layer_map[layer_index][String(v.id)] - 1][1]
-            })
+            let posNode = JSON.parse(JSON.stringify(v))
+            posNode['x'] = data[layer_index][layer_map[layer_index][String(v.id)] - 1][0];
+            posNode['y'] = data[layer_index][layer_map[layer_index][String(v.id)] - 1][1];
+            this.layoutData[layer_index].nodes.push(posNode)
           })
 
           /**
@@ -399,7 +441,7 @@ export default {
 
           //装填边
           this.innerGraphs[layer_index].links.forEach(l=>{
-              let tempLink = {'type':l.type}
+              let tempLink = JSON.parse(JSON.stringify(l))
               this.layoutData[layer_index].nodes.forEach(v=>{
                 if(parseInt(v.id)==parseInt(l.source)){//source
                   tempLink['source']={
@@ -487,18 +529,10 @@ export default {
            */
           let result = {
             'nodes':_nodes.map(v=>{
-                      return {
-                        'id':v.id,
-                        'x':v.x,
-                        'y':v.y,
-                      }
+                      return JSON.parse(JSON.stringify(v))
                     }),
             'links':_links.map(v=>{
-                      return {
-                        'source':{'id':v.source.id,'x':v.source.x,'y':v.source.y},
-                        'target':{'id':v.target.id,'x':v.target.x,'y':v.target.y},
-                        'type':v.type
-                      }
+                      return JSON.parse(JSON.stringify(v))
                     }),
           }
 
@@ -564,7 +598,6 @@ export default {
         let nodesPos = this.layoutData[layer_index].nodes
         let innerLinksPos = this.layoutData[layer_index].links
 
-
         //定义遮罩
         innerDefs.append('clipPath').attr("id",`multi_layer_clip-${layer_index}-${this.nanoid}`)//使用nanoid是为了组件被复用的时候重复
             .append('path')
@@ -591,7 +624,7 @@ export default {
         //添加范围遮罩（用于裁剪）
         const clipG = innerArea.append('g').attr('clip-path',`url(#multi_layer_clip-${layer_index}-${this.nanoid})`)
         //添加zoom层（用于被zoom位移）
-        const zoomG = clipG.append('g')
+        const zoomG = clipG.append('g').classed(`multi_layer_zoomG-${layer_index}`,true)
         //添加innerPlot层（用于容纳图元、倾斜）
         const innerPlot = zoomG.append('g')
                                .classed(`multi_layer_innerPlot-${layer_index}`,true)
@@ -613,6 +646,18 @@ export default {
           .attr('x2', (d) => d.target.x + borderAnchor[0])
           .attr('y2', (d) => d.target.y + borderAnchor[1])
           .classed(`multi_layer_innerLinks-${layer_index}`,true)
+          .on('mousemove',function(d){//更新和显示信息板
+              self.InfoPanelVisible = true;//显示
+              self.$refs['infoPanel'].setMessageData(d.message);//更新信息
+              /**
+               * 更新位置
+               */
+              self.InfoPanelStyle['top'] = `${d3.event.pageY - svg.node().getBoundingClientRect().y + 10}px`
+              self.InfoPanelStyle['left'] = `${d3.event.pageX - svg.node().getBoundingClientRect().x + 10}px`
+          })
+          .on('mouseleave',(d)=>{//隐藏信息板
+              this.InfoPanelVisible = false;//隐藏
+          })
         innerPlot.append('g')
           .selectAll('*')
           .data(nodesPos)
@@ -632,7 +677,20 @@ export default {
             else{
               this.chosenData[layer_index].add(d.id);
             }
+            this.exportChosenData();
             this.updateInnerInfo(layer_index)
+          })
+          .on('mousemove',function(d){//更新和显示信息板
+              self.InfoPanelVisible = true;//显示
+              self.$refs['infoPanel'].setMessageData(d.message);//更新信息
+              /**
+               * 更新位置
+               */
+              self.InfoPanelStyle['top'] = `${d3.event.pageY - svg.node().getBoundingClientRect().y + 5}px`
+              self.InfoPanelStyle['left'] = `${d3.event.pageX - svg.node().getBoundingClientRect().x + 5}px`
+          })
+          .on('mouseleave',(d)=>{//隐藏信息板
+              this.InfoPanelVisible = false;//隐藏
           })
 
         //倾斜
@@ -640,26 +698,60 @@ export default {
         innerPlot.style('transform', `rotateX(${this.plotSkew}deg)`)
         
 
+
+        /**
+         * 
+         * 绑定整个图层面上的交互
+         * 
+         */
+
         //创建新的zoom工具，并且绑定zoom事件
         const zoom = d3.zoom()
                        .scaleExtent([0.1, 40])
                        .translateExtent([[-10000, -10000], [10000, 10000]])
-        this.zooms[layer_index] = zoom;
-        if()
                        .on("zoom",()=>{
-                          zoomG.attr("transform",d3.event.transform)                                              
-                          this.drawSingleOuterLinks(layer_index)
-                          this.drawSingleOuterLinks(layer_index-1)
-                       })
-        border.call(zoom)
+                            zoomG.attr("transform",d3.event.transform)                                              
+                            this.drawSingleOuterLinks(layer_index)
+                            this.drawSingleOuterLinks(layer_index-1)
+                        })
+        this.zooms[layer_index] = zoom;
 
+        //创建新的套索工具
+        const ls = lasso()
+              .closePathSelect(true)
+              .closePathDistance(2000)
+              .items(innerPlot.selectAll(`.multi_layer_innerCircles-${layer_index}`))
+              .targetArea(borderArea)
+              .on("start", ()=>{})
+              .on("draw", ()=>{
+                ls.possibleItems().classed("multi_layer_lasso_possible", true);
+              })
+              .on("end", ()=>{//圈选选择
+                ls.selectedItems().classed("multi_layer_lasso_possible", false)
+                ls.selectedItems().each((d)=>{
+                  this.chosenData[layer_index].add(d.id);
+                })
+                this.exportChosenData();
+                this.updateInnerInfo(layer_index);
+              });
+        this.lassos[layer_index] = ls;  
 
+        if(this.drag_mode[layer_index] == '缩放'){
+            border.call(this.zooms[layer_index])
+        }
+        else if(this.drag_mode[layer_index] == '圈选'){
+            borderArea.call(this.lassos[layer_index])
+        }
 
+        //更新修改信息
+        this.updateInnerInfo(layer_index)
+
+                     
+      
       
     },
 
-    drawSingleOuterLinks(layer_index){// 绘制/更新外部的连接边，这个函数必须在drawSingleLayer之后调用
-      
+    drawSingleOuterLinks(layer_index){// 绘制/更新外部的连接边，这个函数必须在drawSingleLayer之后调用     
 
       const self = this;
 
@@ -710,9 +802,10 @@ export default {
                       })
                       return node2.node().getBoundingClientRect().y - svg.node().getBoundingClientRect().y + 0.5 * node2.node().getBoundingClientRect().height;
                   })
-                  .attr('stroke', '#434343')
+                  .attr('stroke', 'black')
                   .attr('stroke-width', this.outerLinkWidth[layer_index])
                   .attr('opacity', 0.7)
+                  .classed(`multi_layer_outerLinks-${layer_index}`,true)
                   .style('display',(d,i)=>{
                       //node1为上层点 //node2为下层点
                       let node1 = nodes1.filter((v, i) => {
@@ -737,32 +830,64 @@ export default {
                       
                       return null
                   })      
+                .on('mousemove',function(d){//更新和显示信息板
+                    self.InfoPanelVisible = true;//显示
+                    self.$refs['infoPanel'].setMessageData(d.message);//更新信息
+                    /**
+                     * 更新位置
+                     */
+                    self.InfoPanelStyle['top'] = `${d3.event.pageY - svg.node().getBoundingClientRect().y + 15}px`
+                    self.InfoPanelStyle['left'] = `${d3.event.pageX - svg.node().getBoundingClientRect().x + 15}px`
+                })
+                .on('mouseleave',(d)=>{
+                    this.InfoPanelVisible = false;//隐藏信息板
+                })
 
     },
 
     resetPos(layer_index){//对某层进行复位
       this.drawSingleLayer(layer_index);
+      // this.updateInnerInfo(layer_index);
       this.drawSingleOuterLinks(layer_index-1);
       this.drawSingleOuterLinks(layer_index)
     },
 
+    resetChosen(layer_index){//清理某层的选中点
+      this.chosenData[layer_index].clear();
+      this.updateInnerInfo(layer_index);
+      this.exportChosenData();
+    },
 
-    updateInnerInfo(layer_index){//更新某一层元素的元信息（class等）
+    updateInnerInfo(layer_index){//更新某一层内部元素的修改信息（即用户通过交互添加的信息）
       const svg = d3.select(this.$refs['multi_layer_container']).select('.multi_layer_canva');
-      const innerPlot = svg.select(`.multi_layer_innerPlot-${layer_index}`);
+      const layerArea = svg.select(`.multi_layer_layerArea-${layer_index}`)
+      const innerArea = layerArea.select(`.multi_layer_innerArea-${layer_index}`)
+      const borderArea = layerArea.select(`.multi_layer_borderArea-${layer_index}`)
+      const innerPlot = innerArea.select(`.multi_layer_innerPlot-${layer_index}`);
+      const border = borderArea.select(`.multi_layer-border-${layer_index}`)
       const circles = innerPlot.selectAll(`.multi_layer_innerCircles-${layer_index}`)
+      const zoomG = innerArea.select(`.multi_layer_zoomG-${layer_index}`);
+      
       //更新点的选中样式
       circles.attr('stroke',(d,i)=>{
         if(this.chosenData[layer_index].has(d.id))
-          return 'red';
+          return 'black';
         return 'white';
       })
-      //更新drag_mode
+      //更新drag_mode的事件绑定
+      if(this.drag_mode[layer_index] == '缩放'){
+        borderArea.on('.drag',null);
+        border.call(this.zooms[layer_index])
+      }
+      else if(this.drag_mode[layer_index] == '圈选'){ 
+        border.on('.zoom',null)
+        borderArea.call(this.lassos[layer_index])
+      }
 
 
     },
 
-    handleRadiusChange(layer_index){//某一层的radius被修改的回调函数
+    handleRadiusChange(layer_index){//某一层的radius被修改（通过设置中的计数器）后的回调函数
       const svg = d3.select(this.$refs['multi_layer_container']).select('.multi_layer_canva');
       const layerArea = svg.select(`.multi_layer_layerArea-${layer_index}`)
       const innerArea = layerArea.select(`.multi_layer_innerArea-${layer_index}`)
@@ -794,11 +919,26 @@ export default {
       innerLinks.attr('stroke-width', this.baseRadius[layer_index] * this.innerLinkStrokeRadio)
     },
 
-    handleOutLinkWidthChange(layer_index){//某一层OuterLinks的宽度被修改后的回调函数
-      this.drawSingleOuterLinks(layer_index-1);
-      this.drawSingleOuterLinks(layer_index)
+    handleOutLinkWidthChange(layer_index){//某一层OuterLinks的宽度被修改（通过设置中的计数器）后的回调函数
+      const svg = d3.select(this.$refs['multi_layer_container']).select('.multi_layer_canva');
+      const layerArea = svg.select(`.multi_layer_layerArea-${layer_index}`)
+      const outerArea = layerArea.select(`.multi_layer_outerArea-${layer_index}`)
+      const outerLinks = outerArea.selectAll(`.multi_layer_outerLinks-${layer_index}`)
+      outerLinks.attr('stroke-width', this.outerLinkWidth[layer_index])
     },
 
+    handleDragModeChange(layer_index){//drag_mode被改变后（通过设置中的单选按钮）的回调函数
+      this.updateInnerInfo(layer_index)
+    },
+
+    exportChosenData(){//导出选择数据
+      //绑定事件：@exportChosenData
+      let result = []
+      for(let v of this.chosenData){
+        result.push(Array.from(v))
+      }
+      this.$emit('exportChosenData',result)
+    },
   },
 
 
@@ -821,13 +961,54 @@ export default {
     width: 100%;
     overflow: auto;
     display: flex;
-    position:relative
+    position:relative;
   }
   .multi_layer_canva{
     width:100%;
   }
+  .multi_layer_info_panel{
+    position:absolute;
+    z-index: 999;
+    width:200px;
+    height: 200px;
+    border: 2px solid black;
+  }
+
+
 
   /* 动态样式 */
 
+
+
+
+
+</style>
+
+<style>
+  /* lasso样式 */
+  .lasso path{
+    fill-opacity: 0.6;
+    stroke: #ffffff;
+    stroke-width: 2px;
+  }
+
+  .lasso .drawn{
+    fill-opacity: 0.05;
+  }
+
+  .lasso .loop_close{
+    fill: none;
+    stroke-dasharray: 4, 4;
+  }
+
+  .lasso .origin{
+    fill: lightgray;
+    fill-opacity: 0.5;
+  }
+
+  .multi_layer_lasso_possible{/**被拉索套中，但是还未确定的圆点样式 */
+        fill-opacity: 1;
+        stroke: black;
+  }
 
 </style>

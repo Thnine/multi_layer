@@ -1,7 +1,7 @@
 <template>
   <div id="app">
     <div style="width:800px;height:1000px">
-      <MultiLayer ref="MultiLayer"/>
+      <MultiLayer @exportChosenData="handleExportChoseData" ref="MultiLayer"/>
     </div>
   </div>
 </template>
@@ -14,6 +14,11 @@ export default {
   name: 'App',
   components: {
     MultiLayer
+  },
+  methods:{
+    handleExportChoseData(val){
+      console.log('chosen:',val)
+    }
   },
   mounted(){
       //nodes : [{'index':'1',layer:1,...},{'index':'2',layer:0,...},...]
@@ -38,7 +43,14 @@ export default {
           node_groups.forEach((n,i)=>{
             let iGraph = {
               'nodes':n[1].map(v=>{
-                return {'id':v.index}
+                return {
+                  'id':v.index,
+                  'message':{
+                    'data':[
+                      ['id',v.index]
+                    ]
+                   },
+                }
               }),
               'links':[],
             }
@@ -50,6 +62,11 @@ export default {
                   'source':l[0],
                   'target':l[1],
                   'type':l[2],
+                  'message':{
+                    'data':[
+                      l[2]=='dir'?['指向',`${l[0]}->${l[1]}`]:['连接',`${l[0]}与${l[1]}`]
+                    ]
+                  }
                 })
               }
             }
@@ -67,6 +84,11 @@ export default {
                 'source':l[0],
                 'target':l[1],
                 'type':l[2],
+                'message':{
+                  'data':[
+                     l[2]=='dir'?['方向',`${l[0]}->${l[1]}`]:['连接',`${l[0]}与${l[1]}`]
+                  ]
+                }
               })
             }
           }
