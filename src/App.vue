@@ -24,7 +24,6 @@ export default {
       //nodes : [{'index':'1',layer:1,...},{'index':'2',layer:0,...},...]
       //links : [[index1,index2],...]
 
-
       d3.json('static/links.json').then(links=>{
         d3.json('static/nodes.json').then(nodes=>{
           console.log('links:',links)
@@ -64,7 +63,7 @@ export default {
                   'type':l[2],
                   'message':{
                     'data':[
-                      l[2]=='dir'?['指向',`${l[0]}->${l[1]}`]:['连接',`${l[0]}与${l[1]}`]
+                      l[2]=='dir'?['指向',`${l[0]} -> ${l[1]}`]:['连接',`${l[0]} - ${l[1]}`]
                     ]
                   }
                 })
@@ -83,10 +82,10 @@ export default {
               outerLinks[Math.min(node_to_layer_map.get(l[0]),node_to_layer_map.get(l[1]))].links.push({
                 'source':l[0],
                 'target':l[1],
-                'type':l[2],
+                'type':'undir',
                 'message':{
                   'data':[
-                     l[2]=='dir'?['方向',`${l[0]}->${l[1]}`]:['连接',`${l[0]}与${l[1]}`]
+                     ['连接',`${l[0]} - ${l[1]}`]
                   ]
                 }
               })

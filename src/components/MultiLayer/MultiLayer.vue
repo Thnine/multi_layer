@@ -692,6 +692,32 @@ export default {
           .on('mouseleave',(d)=>{//隐藏信息板
               this.InfoPanelVisible = false;//隐藏
           })
+          .on('contextmenu',(d)=>{
+            d3.event.preventDefault();
+            let nodes = this.innerGraphs[layer_index].nodes.map(n=>n.id)
+            let links = this.innerGraphs[layer_index].links.map(l=>[l.source,l.target])
+            let to_find_node = d.id;
+            this.isLoading = true;
+            axios({
+              url:'api/getConnectedSubGraph',
+              method:"POST",
+              data:{
+                'nodes':nodes,
+                'links':links,
+                'to_find_node':to_find_node,
+              }
+            }).then((response)=>{
+              const data = response.data
+              for(let id of data){
+                this.chosenData[layer_index].add(id)
+              }
+              this.updateInnerInfo(layer_index);
+              this.isLoading = false;
+            }).catch(err=>{
+              console.log('err:',err);
+              this.isLoading = false;
+            })
+          })
 
         //倾斜
         innerPlot.style('transform-origin',`${borderAnchor[0]}px ${borderAnchor[1]}px`)
