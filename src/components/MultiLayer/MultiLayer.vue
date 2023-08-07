@@ -161,7 +161,8 @@ export default {
       innerArrowSizeRadio:1.7,//层内连线的箭头尺寸对半径的比例
       innerCircleStrokeRadio:0.3,//层内点的stroke-width对半径的比例
       innerLinkStrokeRadio:0.5,//层内的link的宽度对半径的比例
-      initDragMode:'缩放',//初始
+      initDragMode:'缩放',//初始的drag模式 圈选/缩放
+      initInfoShowMode:'',//xinxi
 
 
       //尺寸数据
