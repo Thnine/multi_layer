@@ -45,6 +45,7 @@ export default {
                 return {
                   'id':v.index,
                   'message':{
+                    'title':`点${v.index}`,
                     'data':[
                       ['id',v.index]
                     ]
@@ -62,6 +63,7 @@ export default {
                   'target':l[1],
                   'type':l[2],
                   'message':{
+                    'title':l[2]=='dir' ? `指向：${l[0]} -> ${l[1]}` : `连接：${l[0]} - ${l[1]}`,
                     'data':[
                       l[2]=='dir'?['指向',`${l[0]} -> ${l[1]}`]:['连接',`${l[0]} - ${l[1]}`]
                     ]
@@ -84,6 +86,7 @@ export default {
                 'target':l[1],
                 'type':'undir',
                 'message':{
+                  'title':l[2]=='dir' ? `指向：${l[0]} -> ${l[1]}` : `连接：${l[0]} - ${l[1]}`,
                   'data':[
                      ['连接',`${l[0]} - ${l[1]}`]
                   ]
