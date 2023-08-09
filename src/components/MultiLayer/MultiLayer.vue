@@ -24,6 +24,15 @@
             </el-col>
           </el-row>
           <el-row type="flex" align="center" style="margin-bottom:20px">
+            <el-col :offset="2" :span="10" style="display:flex;align-items:center">信息展示：</el-col>
+            <el-col :offset="0" :span="10" style="display:flex;justify-content:center">
+              <el-radio-group size="mini" v-model="InfoShowMode[index]" @input="handleInfoShowModeChange(index)">
+                <el-radio-button label="显示"></el-radio-button>
+                <el-radio-button label="隐藏"></el-radio-button>
+              </el-radio-group>
+            </el-col>
+          </el-row>
+          <el-row type="flex" align="center" style="margin-bottom:20px">
             <el-col :offset="2" :span="10" style="display:flex;align-items:center">点基准半径：</el-col>
             <el-col :offset="0" :span="10" style="display:flex;justify-content:center">
               <el-input-number 
@@ -161,8 +170,9 @@ export default {
       innerArrowSizeRadio:1.7,//层内连线的箭头尺寸对半径的比例
       innerCircleStrokeRadio:0.3,//层内点的stroke-width对半径的比例
       innerLinkStrokeRadio:0.5,//层内的link的宽度对半径的比例
+      innerTextSizeRadio:3,//层内文本大小对半径的比例
       initDragMode:'缩放',//初始的drag模式 圈选/缩放
-      initInfoShowMode:'',//xinxi
+      initInfoShowMode:'显示',//初始的信息版显示模式 显示，隐藏
 
 
       //尺寸数据
@@ -179,6 +189,7 @@ export default {
       outerLinkWidth:[],//跨层连线的宽度
       baseRadius:[],//点的基准半径 [radius1,radius2,...]
       drag_mode:[],//点的拖动交互代表的模式，['缩放','圈选',...]
+      InfoShowMode:[],//信息显示模式，['显示','隐藏',...]
       zooms:[],//zoom工具（缩放）
       lassos:[],//lasso工具（圈选）
       InfoPanelVisible:false,//信息板的可见变量
@@ -220,6 +231,10 @@ export default {
       this.drag_mode.length = 0;//drag_mode
       for(let i in this.innerGraphs){
         this.drag_mode.push(this.initDragMode)
+      }
+      this.InfoShowMode.length = 0;//drag_mode
+      for(let i in this.innerGraphs){
+        this.InfoShowMode.push(this.initInfoShowMode)
       }
       this.zooms.length = 0;//zooms
       for(let i in this.innerGraphs){
@@ -629,7 +644,8 @@ export default {
         //添加innerPlot层（用于容纳图元、倾斜）
         const innerPlot = zoomG.append('g')
                                .classed(`multi_layer_innerPlot-${layer_index}`,true)
-                               
+                       
+        //边
         innerPlot.append('g')
           .selectAll('*')
           .data(innerLinksPos)
@@ -659,6 +675,7 @@ export default {
           .on('mouseleave',(d)=>{//隐藏信息板
               this.InfoPanelVisible = false;//隐藏
           })
+        //圆点
         innerPlot.append('g')
           .selectAll('*')
           .data(nodesPos)
@@ -719,6 +736,21 @@ export default {
               this.isLoading = false;
             })
           })
+        //文本
+        innerPlot.append('g')
+          .selectAll('*')
+          .data(nodesPos)
+          .join('text')
+          .style('font-size',this.innerTextSizeRadio * this.baseRadius[layer_index])
+          .text(d=>d.message.title)
+          .attr('x',function(d){
+            return d.x + borderAnchor[0] - 0.5 * this.getBoundingClientRect().width;
+          })
+          .attr('y',function(d){
+            return d.y + borderAnchor[1] - 2 * self.baseRadius[layer_index]
+          })
+          .classed(`multi_layer_innerText-${layer_index}`,true)
+
 
         //倾斜
         innerPlot.style('transform-origin',`${borderAnchor[0]}px ${borderAnchor[1]}px`)
@@ -910,16 +942,30 @@ export default {
         border.on('.zoom',null)
         borderArea.call(this.lassos[layer_index])
       }
+      //更改层内文本的显示状态
+      innerPlot.selectAll(`.multi_layer_innerText-${layer_index}`)
+               .style('display',()=>{
+                  if(this.InfoShowMode[layer_index] == '显示')
+                    return null
+                  else if(this.InfoShowMode[layer_index] == '隐藏')
+                    return 'none'
+                  return null;
+               })
 
 
     },
 
     handleRadiusChange(layer_index){//某一层的radius被修改（通过设置中的计数器）后的回调函数
+      
+      const self = this
+      
       const svg = d3.select(this.$refs['multi_layer_container']).select('.multi_layer_canva');
       const layerArea = svg.select(`.multi_layer_layerArea-${layer_index}`)
       const innerArea = layerArea.select(`.multi_layer_innerArea-${layer_index}`)
       const borderArea = layerArea.select(`.multi_layer_borderArea-${layer_index}`)
       const innerDefs = layerArea.select(`.multi_layer_innerDefs-${layer_index}`)
+
+
 
 
       //修改defs的marker
@@ -939,6 +985,17 @@ export default {
       const innerCircles = layerArea.selectAll(`.multi_layer_innerCircles-${layer_index}`);
       innerCircles.attr("r",this.baseRadius[layer_index])
                   .attr('stroke-width', this.innerCircleStrokeRadio * this.baseRadius[layer_index])
+      
+
+      //修改层内的文本大小和位置
+      const innerText = layerArea.selectAll(`.multi_layer_innerText-${layer_index}`);
+      innerText.style('font-size',this.innerTextSizeRadio * this.baseRadius[layer_index])
+          .attr('x',function(d){
+            return d.x + self.outerPadding.left + self.partHeight * Math.tan(self.borderSkew * Math.PI / 180) - 0.5 * this.getBoundingClientRect().width;
+          })
+          .attr('y',function(d){
+            return d.y + self.outerPadding.top + layer_index * (self.partHeight + self.unitMargin) - 2 * self.baseRadius[layer_index]
+          })
 
 
       //修改连接线的stroke-width
@@ -956,6 +1013,11 @@ export default {
 
     handleDragModeChange(layer_index){//drag_mode被改变后（通过设置中的单选按钮）的回调函数
       this.updateInnerInfo(layer_index)
+    },
+
+    handleInfoShowModeChange(layer_index){//InfoShowMode被改变后的回调函数
+      this.updateInnerInfo(layer_index)
+
     },
 
     exportChosenData(){//导出选择数据
