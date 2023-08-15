@@ -1,7 +1,7 @@
 <template>
   <div id="app">
     <div style="width:800px;height:1000px">
-      <MultiLayer @exportChosenData="handleExportChoseData" ref="MultiLayer"/>
+      <MultiLayer @exportChosenData="handleExportChoseData" style="margin:70px 40px" ref="MultiLayer"/>
     </div>
   </div>
 </template>

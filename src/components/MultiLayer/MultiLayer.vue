@@ -4,7 +4,7 @@
     <!--画布-->
     <svg xmlns="http://www.w3.org/2000/svg" class="multi_layer_canva"></svg>
 
-    <!--控制器-->
+    <!-- 控制器 -->
     <div v-for="(item,index) in innerGraphs" :key="index" ref="multi_layer_controllerBox" :class="`multi_layer_controllerBox-${index}`" style="position:absolute;display:flex;flex-direction:column;align-items:center">
         <el-popover
           placement="left"
@@ -669,8 +669,8 @@ export default {
               /**
                * 更新位置
                */
-              self.InfoPanelStyle['top'] = `${d3.event.pageY - svg.node().getBoundingClientRect().y + 10}px`
-              self.InfoPanelStyle['left'] = `${d3.event.pageX - svg.node().getBoundingClientRect().x + 10}px`
+              self.InfoPanelStyle['top'] = `${d3.event.offsetY + 5}px`
+              self.InfoPanelStyle['left'] = `${d3.event.offsetX + 5}px`
           })
           .on('mouseleave',(d)=>{//隐藏信息板
               this.InfoPanelVisible = false;//隐藏
@@ -704,8 +704,10 @@ export default {
               /**
                * 更新位置
                */
-              self.InfoPanelStyle['top'] = `${d3.event.pageY - svg.node().getBoundingClientRect().y + 5}px`
-              self.InfoPanelStyle['left'] = `${d3.event.pageX - svg.node().getBoundingClientRect().x + 5}px`
+              console.log('event:',d3.event)
+              self.InfoPanelStyle['top'] = `${d3.event.offsetY + 5}px`
+              self.InfoPanelStyle['left'] = `${d3.event.offsetX + 5}px`
+
           })
           .on('mouseleave',(d)=>{//隐藏信息板
               this.InfoPanelVisible = false;//隐藏
@@ -743,8 +745,9 @@ export default {
           .join('text')
           .style('font-size',this.innerTextSizeRadio * this.baseRadius[layer_index])
           .text(d=>d.message.title)
+          .attr('text-anchor','middle')
           .attr('x',function(d){
-            return d.x + borderAnchor[0] - 0.5 * this.getBoundingClientRect().width;
+            return d.x + borderAnchor[0]
           })
           .attr('y',function(d){
             return d.y + borderAnchor[1] - 2 * self.baseRadius[layer_index]
@@ -895,8 +898,9 @@ export default {
                     /**
                      * 更新位置
                      */
-                    self.InfoPanelStyle['top'] = `${d3.event.pageY - svg.node().getBoundingClientRect().y + 15}px`
-                    self.InfoPanelStyle['left'] = `${d3.event.pageX - svg.node().getBoundingClientRect().x + 15}px`
+                    
+                    self.InfoPanelStyle['top'] = `${d3.event.offsetY + 5}px`
+                    self.InfoPanelStyle['left'] = `${d3.event.offsetX + 5}px`
                 })
                 .on('mouseleave',(d)=>{
                     this.InfoPanelVisible = false;//隐藏信息板
@@ -991,7 +995,7 @@ export default {
       const innerText = layerArea.selectAll(`.multi_layer_innerText-${layer_index}`);
       innerText.style('font-size',this.innerTextSizeRadio * this.baseRadius[layer_index])
           .attr('x',function(d){
-            return d.x + self.outerPadding.left + self.partHeight * Math.tan(self.borderSkew * Math.PI / 180) - 0.5 * this.getBoundingClientRect().width;
+            return d.x + self.outerPadding.left + self.partHeight * Math.tan(self.borderSkew * Math.PI / 180);
           })
           .attr('y',function(d){
             return d.y + self.outerPadding.top + layer_index * (self.partHeight + self.unitMargin) - 2 * self.baseRadius[layer_index]
