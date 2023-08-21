@@ -59,8 +59,9 @@
           <el-button slot="reference" type="primary" icon="el-icon-s-tools" circle></el-button>
         </el-popover>
         <el-button type="primary" icon="el-icon-full-screen" circle @click="resetPos(index)" style="margin-top:10px;"></el-button>
+        <el-button type="primary" icon="el-icon-full-screen" circle @click="rotateLayer(index)" style="margin-top:10px;margin-left:0px;"></el-button>
         <el-button type="primary" icon="el-icon-delete" circle @click="resetChosen(index)" style="margin-top:10px;margin-left:0px;"></el-button>
-
+ 
     </div>
 
     <!--悬浮信息版-->
@@ -921,6 +922,15 @@ export default {
       this.exportChosenData();
     },
 
+
+    rotateLayer(layer_index){//旋转按钮的回调函数
+      const svg = d3.select(this.$refs['multi_layer_container']).select('.multi_layer_canva');
+      const layerArea = svg.select(`.multi_layer_layerArea-${layer_index}`)
+      const innerArea = layerArea.select(`.multi_layer_innerArea-${layer_index}`)
+      const borderArea = layerArea.select(`.multi_layer_borderArea-${layer_index}`)
+      4
+    },
+
     updateInnerInfo(layer_index){//更新某一层内部元素的修改信息（即用户通过交互添加的信息）
       const svg = d3.select(this.$refs['multi_layer_container']).select('.multi_layer_canva');
       const layerArea = svg.select(`.multi_layer_layerArea-${layer_index}`)
@@ -1023,6 +1033,8 @@ export default {
       this.updateInnerInfo(layer_index)
 
     },
+
+
 
     exportChosenData(){//导出选择数据
       //绑定事件：@exportChosenData
