@@ -1,6 +1,6 @@
 <template>
   <div v-loading="isLoading" ref="multi_layer_container" class="multi_layer_container">
-    
+
     <!--画布-->
     <svg xmlns="http://www.w3.org/2000/svg" class="multi_layer_canva"></svg>
 
@@ -33,6 +33,28 @@
             </el-col>
           </el-row>
           <el-row type="flex" align="center" style="margin-bottom:20px">
+            <el-col :offset="2" :span="10" style="display:flex;align-items:center">展示属性：</el-col>
+            <el-col :offset="0" :span="10" style="display:flex;justify-content:center">
+                <el-select size="mini" @change="handleChangeSelectedNodeMessageColumns(index)" v-model="selectedNodeMessageColumns[index]">
+                  <el-option
+                    v-for="item in nodeMessageColumns"
+                    :key="item"
+                    :label="item"
+                    :value="item">
+                  </el-option>
+                </el-select>
+            </el-col>
+          </el-row>
+          <el-row type="flex" align="center" style="margin-bottom:20px">
+            <el-col :offset="2" :span="10" style="display:flex;align-items:center">翻转式聚焦：</el-col>
+            <el-col :offset="0" :span="10" style="display:flex;justify-content:center">
+              <el-radio-group v-model="rotateFocusFlag[index]" @input="handleRotateFocusChange(index)">
+                <el-radio :label="true">是</el-radio>
+                <el-radio :label="false">否</el-radio>
+              </el-radio-group>
+            </el-col>
+          </el-row>
+          <el-row type="flex" align="center" style="margin-bottom:20px">
             <el-col :offset="2" :span="10" style="display:flex;align-items:center">点基准半径：</el-col>
             <el-col :offset="0" :span="10" style="display:flex;justify-content:center">
               <el-input-number 
@@ -59,7 +81,6 @@
           <el-button slot="reference" type="primary" icon="el-icon-s-tools" circle></el-button>
         </el-popover>
         <el-button type="primary" icon="el-icon-full-screen" circle @click="resetPos(index)" style="margin-top:10px;"></el-button>
-        <el-button type="primary" icon="el-icon-full-screen" circle @click="rotateLayer(index)" style="margin-top:10px;margin-left:0px;"></el-button>
         <el-button type="primary" icon="el-icon-delete" circle @click="resetChosen(index)" style="margin-top:10px;margin-left:0px;"></el-button>
  
     </div>
@@ -90,7 +111,7 @@
 
 import * as d3 from 'd3'
 import {nanoid} from 'nanoid'
-import {Button,Popover,Row,Col,InputNumber,Loading,RadioButton,RadioGroup} from 'element-ui';
+import {Button,Popover,Row,Col,InputNumber,Loading,RadioButton,Radio,RadioGroup,Checkbox,Select,Option} from 'element-ui';
 import InfoPanel from './InfoPanel.vue'
 import Vue from 'vue'
 import 'element-ui/lib/theme-chalk/index.css';
@@ -104,6 +125,10 @@ Vue.component(Col.name, Col);
 Vue.component(InputNumber.name, InputNumber);
 Vue.component(RadioButton.name, RadioButton);
 Vue.component(RadioGroup.name, RadioGroup);
+Vue.component(Checkbox.name, Checkbox);
+Vue.component(Radio.name, Radio);
+Vue.component(Select.name,Select);
+Vue.component(Option.name,Option)
 Vue.use(Loading.directive);
 
 export default {
@@ -137,10 +162,7 @@ export default {
       // ]
 
 
-      //innerGraphs和outerLinks的每个点和边的数据对象还可以附着一个键值为message的对象，用于展示消息面板
-      //格式如下：
-      //    message:
-
+      //innerGraphs和outerLinks的每个点和边的数据对象后续还会附着一个键值为message的对象，保存了数据传入时所有属性hi，用于消息面板展示
 
 
       //主要数据
@@ -163,6 +185,7 @@ export default {
       },
       borderSkew:20,//辅助平面的倾斜角度（平面上的倾斜），单位deg
       plotSkew:45,//图像的倾斜角度（空间上的倾斜），单位deg
+      FocusSkew:130,//在聚焦状态下的倾斜角度，单位deg (0-180)
       WHRadio:0.5,//边框BBox的长宽比
       unitMargin:40,//边框之间的上下间距
       initRadius:6,//点的初始基准半径
@@ -171,10 +194,10 @@ export default {
       innerArrowSizeRadio:1.7,//层内连线的箭头尺寸对半径的比例
       innerCircleStrokeRadio:0.3,//层内点的stroke-width对半径的比例
       innerLinkStrokeRadio:0.5,//层内的link的宽度对半径的比例
-      innerTextSizeRadio:3,//层内文本大小对半径的比例
+      innerTextSizeRadio:3,//层内文本大小对半径的比例 //暂时废弃
+      innerTextSize:20,//层内文本大小
       initDragMode:'缩放',//初始的drag模式 圈选/缩放
       initInfoShowMode:'显示',//初始的信息版显示模式 显示，隐藏
-
 
       //尺寸数据
       svgWidth:0,//svg的宽度
@@ -183,6 +206,9 @@ export default {
       borderWidth:0,//边框的宽度
       initAreaWidth:0,//initArea：在折叠前，plot应该占据的空间，initArea的宽度
       initAreaHeight:0,//initArea的高度
+      anchor:[],//[[x0,y0],[x1,y1],...] //边框BBox左上角的点坐标
+      borderAnchor:[],//[[x0,y0],[x1,y1],...] //边框左上角的点坐标
+      
 
       //其他数据
       isLoading:false,//是否加入加载页面
@@ -191,6 +217,7 @@ export default {
       baseRadius:[],//点的基准半径 [radius1,radius2,...]
       drag_mode:[],//点的拖动交互代表的模式，['缩放','圈选',...]
       InfoShowMode:[],//信息显示模式，['显示','隐藏',...]
+      rotateFocusFlag:[],//是否旋转聚焦，[true,false,false,...]
       zooms:[],//zoom工具（缩放）
       lassos:[],//lasso工具（圈选）
       InfoPanelVisible:false,//信息板的可见变量
@@ -198,6 +225,8 @@ export default {
         top:'0px',
         left:'0px'
       },//信息版的动态style
+      nodeMessageColumns:[],//消息message的属性集合名 ['attr1','attr2',...]
+      selectedNodeMessageColumns:[],//选择展示的message属性 ['attr2','attr1',...]
     }
   },
 
@@ -217,6 +246,14 @@ export default {
       console.log('outerLinks:',this.outerLinks)
 
       //清理之前的数据，并且初始化一些数据
+      this.anchor.length = 0;//anchor
+      for(let i in this.innerGraphs){
+        this.anchor.push([0,0]);
+      }
+      this.borderAnchor.length = 0;//borderAnchor
+      for(let i in this.innerGraphs){
+        this.borderAnchor.push([0,0]);
+      }
       this.baseRadius.length = 0;//baseRadius
       for(let i in this.innerGraphs){
         this.baseRadius.push(this.initRadius);
@@ -237,6 +274,10 @@ export default {
       for(let i in this.innerGraphs){
         this.InfoShowMode.push(this.initInfoShowMode)
       }
+      this.rotateFocusFlag.length = 0;//rotateFocus
+      for(let i in this.innerGraphs){
+        this.rotateFocusFlag.push(false)
+      }
       this.zooms.length = 0;//zooms
       for(let i in this.innerGraphs){
         this.zooms.push(undefined)
@@ -250,6 +291,15 @@ export default {
         top:'0px',
         left:'0px',
       };
+      this.nodeMessageColumns.length = 0;//messageColumns
+      for(let key in this.innerGraphs[0].nodes[0].message){
+        this.nodeMessageColumns.push(key)
+      };
+      this.selectedNodeMessageColumns.length = 0;//selectedNodeMessageColumns
+      for(let i in this.innerGraphs){
+        this.selectedNodeMessageColumns.push(this.nodeMessageColumns[0])
+      }
+
     },
 
     async draw(){//重绘整张图
@@ -269,9 +319,10 @@ export default {
       for(let layer in this.innerGraphs){
         //从后往前添加
         const layerArea = plot.append('g').classed(`multi_layer_layerArea-${this.innerGraphs.length - 1 - layer}`,true)
-        layerArea.append('g').classed(`multi_layer_outerArea-${this.innerGraphs.length - 1 - layer}`,true)
-        layerArea.append('g').classed(`multi_layer_borderArea-${this.innerGraphs.length - 1 - layer}`,true)
-        layerArea.append('g').classed(`multi_layer_innerArea-${this.innerGraphs.length - 1 - layer}`,true)
+        layerArea.append('g').classed(`multi_layer_outerArea-${this.innerGraphs.length - 1 - layer}`,true) //层间相连区
+        layerArea.append('g').classed(`multi_layer_borderArea-${this.innerGraphs.length - 1 - layer}`,true) //边框区
+        layerArea.append('g').classed(`multi_layer_innerArea-${this.innerGraphs.length - 1 - layer}`,true) //层内图区
+        layerArea.append('g').classed(`multi_layer_annoArea-${this.innerGraphs.length - 1 - layer}`,true) //标注层
         layerArea.append('defs').classed(`multi_layer_innerDefs-${this.innerGraphs.length - 1 - layer}`,true)
       }
 
@@ -368,7 +419,7 @@ export default {
         //初始化layer_map
         layer_map.push({})  
       }
-      let whole_id_set = new Set()
+      let whole_id_set = new Set() //整理后的数据中会出现的所有id的集合
       this.innerGraphs[this.innerGraphs.length-1].nodes.forEach((v,i)=>{
         layer_map[this.innerGraphs.length-1][String(v.id)] = (i + 1)
         whole_id_set.add((i + 1))
@@ -383,6 +434,7 @@ export default {
         let new_id_set = new Set(whole_id_set) //保存了所有的布局用id
         let raw_upper_id_queue = this.innerGraphs[this.outerLinks.length - parseInt(layer_index) - 1].nodes.map(v=>v.id)//保存了上层的innerGrah中的id
         ol.forEach((v,i)=>{//利用边建立关系
+          console.log('source:',v.source,'target:',v.target)
           upper[String(v.source)] = lower[String(v.target)]
           new_id_set.delete(lower[String(v.target)])
           raw_upper_id_queue.splice(raw_upper_id_queue.indexOf(parseInt(v.source)),1)
@@ -406,10 +458,10 @@ export default {
         
       })
       
-      // console.log('layer_map:',JSON.parse(JSON.stringify(layer_map)))
-      // console.log('layer_data:',layer_data)
-      // console.log('node_data:',node_data)
-      // console.log('edge_data:',edge_data)
+      console.log('layer_map:',JSON.parse(JSON.stringify(layer_map)))
+      console.log('layer_data:',layer_data)
+      console.log('node_data:',node_data)
+      console.log('edge_data:',edge_data)
 
       await axios({
         url:'api/getWangZixiaoLayout',
@@ -558,6 +610,144 @@ export default {
       }
     },
 
+    async getFocusZixiaoLayout(innerGraphs,outerLinks){//获取聚焦式王子潇布局
+      /**
+       *
+       * 恰好适应边框，布局的左上角(0,0)在画布中对应borderAnchor
+       * 
+       * 要求:1.跨层有连接关系的点必须是一对一的关系
+       *      2.下层点多于上层点
+       * 
+       */
+
+      
+
+      let layer_data = ['layerID layerLabel']
+      let layer_map = []
+      let node_data = ['nodeID nodeAge nodeTenure nodeLevel nodeDepartment']
+      let edge_data = []
+      for(let layer_index in innerGraphs){
+        layer_data.push(`${parseInt(layer_index)+1} layer_name`);//构建layer data
+        //初始化layer_map
+        layer_map.push({})  
+      }
+      let whole_id_set = new Set()
+      innerGraphs[innerGraphs.length-1].nodes.forEach((v,i)=>{
+        layer_map[innerGraphs.length-1][String(v.id)] = (i + 1)
+        whole_id_set.add((i + 1))
+        node_data.push(`${(i + 1)} 0 0 0 0`)
+      })
+      for(let layer_index in outerLinks){
+        //倒序给layer_map赋值
+        let ol = outerLinks[outerLinks.length - parseInt(layer_index) - 1].links;
+        let upper = layer_map[outerLinks.length - parseInt(layer_index) - 1];//上层
+        let lower = layer_map[outerLinks.length - parseInt(layer_index)];//下层
+        
+        let new_id_set = new Set(whole_id_set) //保存了所有的布局用id
+        let raw_upper_id_queue = innerGraphs[outerLinks.length - parseInt(layer_index) - 1].nodes.map(v=>v.id)//保存了上层的innerGrah中的id
+        ol.forEach((v,i)=>{//利用边建立关系
+          upper[String(v.source)] = lower[String(v.target)]
+          new_id_set.delete(lower[String(v.target)])
+          raw_upper_id_queue.splice(raw_upper_id_queue.indexOf(parseInt(v.source)),1)
+        })
+        //给set中的剩余项赋值
+        for(let remain_id of Array.from(new_id_set)){
+          if(raw_upper_id_queue.length != 0){//raw_upper_id_queue还有剩余
+            upper[String(raw_upper_id_queue.pop())] = remain_id;
+          }
+          else{//raw_upper_id_queue无剩余
+            upper[String(remain_id)] = remain_id;
+          }
+        }
+      }
+      //添加edge_data
+      this.innerGraphs.forEach((v,layer_index)=>{
+        let links = v.links;
+        links.forEach((l)=>{
+            edge_data.push(`${layer_index+1} ${layer_map[layer_index][String(l.source)]} ${layer_map[layer_index][String(l.target)]} 1`)
+        })
+        
+      })
+      
+      // console.log('layer_map:',JSON.parse(JSON.stringify(layer_map)))
+      // console.log('layer_data:',layer_data)
+      // console.log('node_data:',node_data)
+      // console.log('edge_data:',edge_data)
+
+      await axios({
+        url:'api/getWangZixiaoLayout',
+        method:"POST",
+        data:{
+          'layer_data':layer_data,
+          'node_data':node_data,
+          'edge_data':edge_data,
+        }
+      }).then((response)=>{
+        const data = response.data
+        for(let layer_index = 0;layer_index < data.length;layer_index++){
+          this.layoutData.push({
+            'nodes':[],
+            'links':[],
+          })
+          //装填点
+          this.innerGraphs[layer_index].nodes.forEach(v=>{
+            let posNode = JSON.parse(JSON.stringify(v))
+            posNode['x'] = data[layer_index][layer_map[layer_index][String(v.id)] - 1][0];
+            posNode['y'] = data[layer_index][layer_map[layer_index][String(v.id)] - 1][1];
+            this.layoutData[layer_index].nodes.push(posNode)
+          })
+
+          /**
+           * 
+           * 变换点坐标到中心为(0.5*initAreaWidth,0.5*initAreaHeight)，边界适应边框。
+           * 
+           */
+          const maxX = Math.max(...this.layoutData[layer_index].nodes.map(v=>v.x))
+          const minX = Math.min(...this.layoutData[layer_index].nodes.map(v=>v.x))
+          const maxY = Math.max(...this.layoutData[layer_index].nodes.map(v=>v.y))
+          const minY = Math.min(...this.layoutData[layer_index].nodes.map(v=>v.y))
+          //变换
+          const xScale = d3.scaleLinear()
+            .domain([minX,maxX])
+            .range([this.baseRadius[layer_index] + this.initInnerPadding,this.initAreaWidth - this.baseRadius[layer_index] - this.initInnerPadding])
+          const yScale = d3.scaleLinear()
+            .domain([minY,maxY])
+            .range([this.baseRadius[layer_index] + this.initInnerPadding,this.initAreaHeight - this.baseRadius[layer_index] - this.initInnerPadding])
+          
+          this.layoutData[layer_index].nodes.forEach((v,i)=>{
+            this.layoutData[layer_index].nodes[i].x = xScale(this.layoutData[layer_index].nodes[i].x)
+            this.layoutData[layer_index].nodes[i].y = yScale(this.layoutData[layer_index].nodes[i].y)
+          })
+
+          //装填边
+          this.innerGraphs[layer_index].links.forEach(l=>{
+              let tempLink = JSON.parse(JSON.stringify(l))
+              this.layoutData[layer_index].nodes.forEach(v=>{
+                if(parseInt(v.id)==parseInt(l.source)){//source
+                  tempLink['source']={
+                    'id':v.id,
+                    'x':v.x,
+                    'y':v.y,
+                  }
+                }
+                else if(parseInt(v.id)==parseInt(l.target)){//target
+                  tempLink['target']={
+                    'id':v.id,
+                    'x':v.x,
+                    'y':v.y
+                  }
+                }
+              })
+              this.layoutData[layer_index].links.push(tempLink)
+          })
+          
+        }
+        console.log('layout:',this.layoutData)
+      }).catch((err)=>{
+        console.log('err:',err)
+      })
+    },
+
     drawSingleLayer(layer_index){//绘制/更新单层
         /**
          * params：
@@ -571,18 +761,20 @@ export default {
         const innerArea = layerArea.select(`.multi_layer_innerArea-${layer_index}`)
         const borderArea = layerArea.select(`.multi_layer_borderArea-${layer_index}`)
         const innerDefs = layerArea.select(`.multi_layer_innerDefs-${layer_index}`)
+        const annoArea = layerArea.select(`.multi_layer_annoArea-${layer_index}`)
 
         //清理
         innerArea.selectAll('*').remove();
         borderArea.selectAll('*').remove();
         innerDefs.selectAll('*').remove();
+        annoArea.selectAll('*').remove();
 
 
-        const anchor = [
+        this.anchor[layer_index] = [
           this.outerPadding.left,
           this.outerPadding.top + layer_index * (this.partHeight + this.unitMargin)
         ]//边框BBox左上角的点坐标
-        const borderAnchor = [
+        this.borderAnchor[layer_index] = [
           this.outerPadding.left + this.partHeight * Math.tan(this.borderSkew * Math.PI / 180),
           this.outerPadding.top + layer_index * (this.partHeight + this.unitMargin)
         ]//边框左上角的点坐标
@@ -594,16 +786,22 @@ export default {
          * 
          */
         const border = borderArea.append('path')
-            .attr('d', `M ${borderAnchor[0]} ${borderAnchor[1]} `
-                      +`L ${borderAnchor[0] + this.borderWidth} ${borderAnchor[1]} ` 
-                      +`L ${anchor[0] + this.borderWidth} ${anchor[1] + this.partHeight} `
-                      +`L ${anchor[0]} ${anchor[1] + this.partHeight} `
-                      +`L ${borderAnchor[0]} ${borderAnchor[1]}`)
+            .attr('d', `M ${this.borderAnchor[layer_index][0]} ${this.borderAnchor[layer_index][1]} `
+                      +`L ${this.borderAnchor[layer_index][0] + this.borderWidth} ${this.borderAnchor[layer_index][1]} ` 
+                      +`L ${this.anchor[layer_index][0] + this.borderWidth} ${this.anchor[layer_index][1] + this.partHeight} `
+                      +`L ${this.anchor[layer_index][0]} ${this.anchor[layer_index][1] + this.partHeight} `
+                      +`L ${this.borderAnchor[layer_index][0]} ${this.borderAnchor[layer_index][1]}`)
             .attr('fill', '#1f8bd4')
-            .attr('fill-opacity', 0.7)
+            .attr('fill-opacity', 0.8)
             .style('stroke', "lightgray")
             .style('stroke-width', 3)
             .classed(`multi_layer-border-${layer_index}`,true)
+        
+        const baseline = borderArea.append('path')
+            .attr('d',`M ${this.borderAnchor[layer_index][0]} ${this.borderAnchor[layer_index][1]} `
+                      +`L ${this.borderAnchor[layer_index][0] + this.borderWidth} ${this.borderAnchor[layer_index][1]}`)
+            .style('stroke', "orange")
+            .style('stroke-width', 3)
         
         /**
          * 
@@ -618,11 +816,12 @@ export default {
         //定义遮罩
         innerDefs.append('clipPath').attr("id",`multi_layer_clip-${layer_index}-${this.nanoid}`)//使用nanoid是为了组件被复用的时候重复
             .append('path')
-            .attr('d', `M ${borderAnchor[0]} ${borderAnchor[1]} `
-                      +`L ${borderAnchor[0] + this.borderWidth} ${borderAnchor[1]} ` 
-                      +`L ${anchor[0] + this.borderWidth} ${anchor[1] + this.partHeight} `
-                      +`L ${anchor[0]} ${anchor[1] + this.partHeight} `
-                      +`L ${borderAnchor[0]} ${borderAnchor[1]}`)
+            .classed(`multi_layer_clipEntity-${layer_index}-${this.nanoid}`,true)
+            .attr('d', `M ${this.borderAnchor[layer_index][0]} ${this.borderAnchor[layer_index][1]} `
+                      +`L ${this.borderAnchor[layer_index][0] + this.borderWidth} ${this.borderAnchor[layer_index][1]} ` 
+                      +`L ${this.anchor[layer_index][0] + this.borderWidth} ${this.anchor[layer_index][1] + this.partHeight} `
+                      +`L ${this.anchor[layer_index][0]} ${this.anchor[layer_index][1] + this.partHeight} `
+                      +`L ${this.borderAnchor[layer_index][0]} ${this.borderAnchor[layer_index][1]}`)
         //定义arrow
         let innerArrowSize = this.innerArrowSizeRadio * this.baseRadius[layer_index]
         innerDefs.append('marker')
@@ -659,10 +858,10 @@ export default {
             else if(d.type == 'undir')
               return null
           })
-          .attr('x1', (d) => d.source.x + borderAnchor[0])
-          .attr('y1', (d) => d.source.y + borderAnchor[1])
-          .attr('x2', (d) => d.target.x + borderAnchor[0])
-          .attr('y2', (d) => d.target.y + borderAnchor[1])
+          .attr('x1', (d) => d.source.x + this.borderAnchor[layer_index][0])
+          .attr('y1', (d) => d.source.y + this.borderAnchor[layer_index][1])
+          .attr('x2', (d) => d.target.x + this.borderAnchor[layer_index][0])
+          .attr('y2', (d) => d.target.y + this.borderAnchor[layer_index][1])
           .classed(`multi_layer_innerLinks-${layer_index}`,true)
           .on('mousemove',function(d){//更新和显示信息板
               self.InfoPanelVisible = true;//显示
@@ -670,8 +869,8 @@ export default {
               /**
                * 更新位置
                */
-              self.InfoPanelStyle['top'] = `${d3.event.offsetY + 5}px`
-              self.InfoPanelStyle['left'] = `${d3.event.offsetX + 5}px`
+              self.InfoPanelStyle['top'] = `${d3.event.offsetY + 10}px`
+              self.InfoPanelStyle['left'] = `${d3.event.offsetX + 10}px`
           })
           .on('mouseleave',(d)=>{//隐藏信息板
               this.InfoPanelVisible = false;//隐藏
@@ -685,8 +884,8 @@ export default {
           .attr('fill', "#b256f0")
           .attr('stroke', "white")
           .attr('stroke-width', this.innerCircleStrokeRadio * this.baseRadius[layer_index])
-          .attr("cx",(d)=>d.x + borderAnchor[0])
-          .attr("cy",(d)=>d.y + borderAnchor[1])
+          .attr("cx",(d)=>d.x + this.borderAnchor[layer_index][0])
+          .attr("cy",(d)=>d.y + this.borderAnchor[layer_index][1])
           .classed(`multi_layer_innerCircles-${layer_index}`,true)
           .style('cursor','pointer')
           .on('click',(d,i)=>{//点击选择和取消选择
@@ -705,9 +904,8 @@ export default {
               /**
                * 更新位置
                */
-              console.log('event:',d3.event)
-              self.InfoPanelStyle['top'] = `${d3.event.offsetY + 5}px`
-              self.InfoPanelStyle['left'] = `${d3.event.offsetX + 5}px`
+              self.InfoPanelStyle['top'] = `${d3.event.offsetY + 10}px`
+              self.InfoPanelStyle['left'] = `${d3.event.offsetX + 10}px`
 
           })
           .on('mouseleave',(d)=>{//隐藏信息板
@@ -740,24 +938,17 @@ export default {
             })
           })
         //文本
-        innerPlot.append('g')
+        annoArea.append('g')
           .selectAll('*')
           .data(nodesPos)
           .join('text')
-          .style('font-size',this.innerTextSizeRadio * this.baseRadius[layer_index])
-          .text(d=>d.message.title)
+          .text(d=>d.message[this.selectedNodeMessageColumns[layer_index]])
           .attr('text-anchor','middle')
-          .attr('x',function(d){
-            return d.x + borderAnchor[0]
-          })
-          .attr('y',function(d){
-            return d.y + borderAnchor[1] - 2 * self.baseRadius[layer_index]
-          })
           .classed(`multi_layer_innerText-${layer_index}`,true)
 
 
         //倾斜
-        innerPlot.style('transform-origin',`${borderAnchor[0]}px ${borderAnchor[1]}px`)
+        innerPlot.style('transform-origin',`${this.borderAnchor[layer_index][0]}px ${this.borderAnchor[layer_index][1]}px`)
         innerPlot.style('transform', `rotateX(${this.plotSkew}deg)`)
         
 
@@ -773,9 +964,10 @@ export default {
                        .scaleExtent([0.1, 40])
                        .translateExtent([[-10000, -10000], [10000, 10000]])
                        .on("zoom",()=>{
-                            zoomG.attr("transform",d3.event.transform)                                              
-                            this.drawSingleOuterLinks(layer_index)
-                            this.drawSingleOuterLinks(layer_index-1)
+                            zoomG.attr("transform",d3.event.transform)
+                            this.updateInnerInfo(layer_index);                                         
+                            this.updateOuterInfo(layer_index)
+                            this.updateOuterInfo(layer_index-1)
                         })
         this.zooms[layer_index] = zoom;
 
@@ -885,11 +1077,26 @@ export default {
                       point2.x = node2.node().getBoundingClientRect().x - svg.node().getBoundingClientRect().x + 0.5 * node2.node().getBoundingClientRect().width;
                       point2.y = node2.node().getBoundingClientRect().y - svg.node().getBoundingClientRect().y + 0.5 * node2.node().getBoundingClientRect().height
 
+                      //向回翻转坐标
+                      if(this.rotateFocusFlag[layer_index]){
+                        let layer1_cy =  this.anchor[layer_index][1] + this.partHeight * 0.5;
+                        point1.y = (point1.y - layer1_cy) / Math.cos(this.FocusSkew * Math.PI / 180) + layer1_cy;             
+                      }
+                      if(this.rotateFocusFlag[layer_index + 1]){
+                        let layer2_cy =  this.anchor[layer_index + 1][1] + this.partHeight * 0.5;
+                        point2.y = (point2.y - layer2_cy) / Math.cos(this.FocusSkew * Math.PI / 180) + layer2_cy;
+                      }
+
                       if(!border1.node().isPointInFill(point1) && !border1.node().isPointInStroke(point1))
                         return 'none'
 
                       if(!border2.node().isPointInFill(point2) && !border2.node().isPointInStroke(point2))
                         return 'none'
+
+                      //删除节点
+                      d3.select(point1).remove();
+                      d3.select(point2).remove();
+
                       
                       return null
                   })      
@@ -900,12 +1107,15 @@ export default {
                      * 更新位置
                      */
                     
-                    self.InfoPanelStyle['top'] = `${d3.event.offsetY + 5}px`
-                    self.InfoPanelStyle['left'] = `${d3.event.offsetX + 5}px`
+                    self.InfoPanelStyle['top'] = `${d3.event.offsetY + 10}px`
+                    self.InfoPanelStyle['left'] = `${d3.event.offsetX + 10}px`
                 })
                 .on('mouseleave',(d)=>{
                     this.InfoPanelVisible = false;//隐藏信息板
                 })
+        
+        //更新外部连线的交互附加信息
+        this.updateOuterInfo(layer_index);
 
     },
 
@@ -922,26 +1132,61 @@ export default {
       this.exportChosenData();
     },
 
-
-    rotateLayer(layer_index){//旋转按钮的回调函数
+    rotateLayer(layer_index,state){//旋转聚焦某一层
+      /**
+       * 
+       * 如果state = 0，那么则恢复旋转前的原状；如果state = 1，那么则旋转聚焦；
+       * 
+       */
       const svg = d3.select(this.$refs['multi_layer_container']).select('.multi_layer_canva');
       const layerArea = svg.select(`.multi_layer_layerArea-${layer_index}`)
       const innerArea = layerArea.select(`.multi_layer_innerArea-${layer_index}`)
       const borderArea = layerArea.select(`.multi_layer_borderArea-${layer_index}`)
-      4
+      const innerDefs = layerArea.select(`.multi_layer_innerDefs-${layer_index}`)
+      const clipEntity = innerDefs.select(`multi_layer_clipEntity-${layer_index}-${this.nanoid}`)
+
+      
+
+      borderArea.style('transform-origin',
+        `${this.outerPadding.left}px 
+         ${this.anchor[layer_index][1] + 0.5 * this.partHeight}px`)
+      clipEntity.style('transform-origin',
+        `${this.outerPadding.left}px 
+         ${this.anchor[layer_index][1] + 0.5 * this.partHeight}px`)
+      innerArea.style('transform-origin',
+        `${this.outerPadding.left}px 
+         ${this.anchor[layer_index][1] + 0.5 * this.partHeight}px`)
+  
+      if(state == 0){
+        clipEntity.style('transform', `rotateX(${0}deg)`)
+        borderArea.style('transform', `rotateX(${0}deg)`)
+        innerArea.style('transform', `rotateX(${0}deg)`)
+
+      }
+      else if(state == 1){
+        clipEntity.style('transform', `rotateX(${this.FocusSkew}deg)`)
+        borderArea.style('transform', `rotateX(${this.FocusSkew}deg)`)
+        innerArea.style('transform', `rotateX(${this.FocusSkew}deg)`)
+      }
+
     },
 
-    updateInnerInfo(layer_index){//更新某一层内部元素的修改信息（即用户通过交互添加的信息）
+    updateInnerInfo(layer_index){//更新某一层内部元素的可修改信息（即用户在交互过程中修改的信息）
+
+      const self = this;
+
       const svg = d3.select(this.$refs['multi_layer_container']).select('.multi_layer_canva');
       const layerArea = svg.select(`.multi_layer_layerArea-${layer_index}`)
       const innerArea = layerArea.select(`.multi_layer_innerArea-${layer_index}`)
       const borderArea = layerArea.select(`.multi_layer_borderArea-${layer_index}`)
+      const borderEntity = borderArea.select(`.multi_layer-border-${layer_index}`)
+      const annoArea = layerArea.select(`.multi_layer_annoArea-${layer_index}`)
       const innerPlot = innerArea.select(`.multi_layer_innerPlot-${layer_index}`);
       const border = borderArea.select(`.multi_layer-border-${layer_index}`)
       const circles = innerPlot.selectAll(`.multi_layer_innerCircles-${layer_index}`)
       const zoomG = innerArea.select(`.multi_layer_zoomG-${layer_index}`);
       
-      //更新点的选中样式
+      //更新点的选中外观
       circles.attr('stroke',(d,i)=>{
         if(this.chosenData[layer_index].has(d.id))
           return 'black';
@@ -956,16 +1201,223 @@ export default {
         border.on('.zoom',null)
         borderArea.call(this.lassos[layer_index])
       }
-      //更改层内文本的显示状态
-      innerPlot.selectAll(`.multi_layer_innerText-${layer_index}`)
-               .style('display',()=>{
-                  if(this.InfoShowMode[layer_index] == '显示')
-                    return null
+
+      //更新旋转状态
+      if(this.rotateFocusFlag[layer_index]){//旋转
+        this.rotateLayer(layer_index,1);
+      }
+      else{//恢复原始状态
+        this.rotateLayer(layer_index,0);
+      }
+
+      //更改层内文本位置的显示状态
+      const nodes = layerArea.selectAll(`.multi_layer_innerCircles-${layer_index}`)//上层点
+      annoArea.selectAll(`.multi_layer_innerText-${layer_index}`)
+              // .style('font-size',this.innerTextSizeRadio * this.baseRadius[layer_index])
+              .style('font-size',this.innerTextSize)
+              .text(d=>d.message[this.selectedNodeMessageColumns[layer_index]])
+              .attr('x',function(d){
+                let _node = nodes.filter((v, i) => {
+                        return d.id == v.id
+                    })
+                return _node.node().getBoundingClientRect().x - svg.node().getBoundingClientRect().x + 0.5*_node.node().getBoundingClientRect().width;
+              })
+              .attr('y',function(d){
+                let _node = nodes.filter((v, i) => {
+                        return d.id == v.id
+                    })
+                return _node.node().getBoundingClientRect().y - svg.node().getBoundingClientRect().y - 2// - 0.5 * d3.select(this).node().getBoundingClientRect().height;
+              })
+              .style('display',(d)=>{
+                  if(this.InfoShowMode[layer_index] == '显示'){
+                    let _node = nodes.filter((v, i) => {
+                        return d.id == v.id
+                    })
+                    /**
+                     * 检测文本是否随点进入隐藏状态
+                     */
+                    const point = svg.node().createSVGPoint();
+                    point.x = _node.node().getBoundingClientRect().x - svg.node().getBoundingClientRect().x + 0.5 * _node.node().getBoundingClientRect().width;
+                    point.y = _node.node().getBoundingClientRect().y - svg.node().getBoundingClientRect().y + 0.5 * _node.node().getBoundingClientRect().height
+                    //计算翻转坐标
+                    if(this.rotateFocusFlag[layer_index]){
+                      let layer_cy =  this.anchor[layer_index][1] + this.partHeight * 0.5;
+                      point.y = (point.y - layer_cy) / Math.cos(this.FocusSkew * Math.PI / 180) + layer_cy;             
+                    }
+                    //检测点是否隐藏
+                    if(!borderEntity.node().isPointInFill(point) && !borderEntity.node().isPointInStroke(point)){
+                      d3.select(point).remove();
+                      return 'none'
+                    }
+                    else{
+                      d3.select(point).remove();
+                      return null;
+                    }
+                      
+
+                  }
                   else if(this.InfoShowMode[layer_index] == '隐藏')
                     return 'none'
                   return null;
-               })
+              })
 
+
+    },
+
+    updateOuterInfo(layer_index){//更新某一层下部的连接线的修改信息（即用户在交互过程中修改的信息）
+
+      //异常处理
+      if(layer_index < 0 || layer_index >= this.outerLinks.length)
+        return;
+
+      const svg = d3.select(this.$refs['multi_layer_container']).select('.multi_layer_canva');
+      const layerArea = svg.select(`.multi_layer_layerArea-${layer_index}`)
+      const outerArea = layerArea.select(`.multi_layer_outerArea-${layer_index}`)
+      const innerArea = layerArea.select(`.multi_layer_innerArea-${layer_index}`)
+      const borderArea = layerArea.select(`.multi_layer_borderArea-${layer_index}`)
+      const outerLinks = outerArea.selectAll(`.multi_layer_outerLinks-${layer_index}`)
+      
+      const layerArea_up = svg.select(`.multi_layer_layerArea-${layer_index}`)//连线上层平面
+      const layerArea_down = svg.select(`.multi_layer_layerArea-${layer_index+1}`)//连线下层平面
+
+      //更新连接线的宽度
+      outerLinks.attr('stroke-width', this.outerLinkWidth[layer_index])
+      //更新连接线的位置和溢出隐藏模式
+      const nodes1 = layerArea_up.selectAll(`.multi_layer_innerCircles-${layer_index}`)//上层点
+      const nodes2 = layerArea_down.selectAll(`.multi_layer_innerCircles-${layer_index+1}`)//下层点
+      outerLinks.attr("x1",function(d){//1为上层点，2为下层点
+                    let node1 = nodes1.filter((v, i) => {
+                        return d.source == v.id
+                    })
+                    return node1.node().getBoundingClientRect().x - svg.node().getBoundingClientRect().x + 0.5 * node1.node().getBoundingClientRect().width;
+                })
+                .attr("y1",function(d){//1为上层点，2为下层点
+                    let node1 = nodes1.filter((v, i) => {
+                        return d.source == v.id
+                    })
+                    return node1.node().getBoundingClientRect().y - svg.node().getBoundingClientRect().y + 0.5 * node1.node().getBoundingClientRect().height;
+                })
+                .attr("x2",function(d){//1为上层点，2为下层点
+                    let node2 = nodes2.filter((v, i) => {
+                        return d.target == v.id
+                    })
+                    return node2.node().getBoundingClientRect().x - svg.node().getBoundingClientRect().x + 0.5 * node2.node().getBoundingClientRect().width;
+                })
+                .attr("y2",function(d){//1为上层点，2为下层点
+                    let node2 = nodes2.filter((v, i) => {
+                        return d.target == v.id
+                    })
+                    return node2.node().getBoundingClientRect().y - svg.node().getBoundingClientRect().y + 0.5 * node2.node().getBoundingClientRect().height;
+                })
+                .style('display',(d,i)=>{
+                    //node1为上层点 //node2为下层点
+                    let node1 = nodes1.filter((v, i) => {
+                        return d.source == v.id
+                    })
+                    let node2 = nodes2.filter((v, i) => {
+                        return d.target == v.id
+                    })
+                    //检测端点是否溢出
+                    const point1 = svg.node().createSVGPoint();
+                    point1.x = node1.node().getBoundingClientRect().x - svg.node().getBoundingClientRect().x + 0.5 * node1.node().getBoundingClientRect().width;
+                    point1.y = node1.node().getBoundingClientRect().y - svg.node().getBoundingClientRect().y + 0.5 * node1.node().getBoundingClientRect().height
+                    const point2 = svg.node().createSVGPoint();
+                    point2.x = node2.node().getBoundingClientRect().x - svg.node().getBoundingClientRect().x + 0.5 * node2.node().getBoundingClientRect().width;
+                    point2.y = node2.node().getBoundingClientRect().y - svg.node().getBoundingClientRect().y + 0.5 * node2.node().getBoundingClientRect().height
+                    
+                    //向回翻转坐标
+                    if(this.rotateFocusFlag[layer_index]){
+                      let layer1_cy =  this.anchor[layer_index][1] + this.partHeight * 0.5;
+                      point1.y = (point1.y - layer1_cy) / Math.cos(this.FocusSkew * Math.PI / 180) + layer1_cy;             
+                    }
+                    if(this.rotateFocusFlag[layer_index + 1]){
+                      let layer2_cy =  this.anchor[layer_index + 1][1] + this.partHeight * 0.5;
+                      point2.y = (point2.y - layer2_cy) / Math.cos(this.FocusSkew * Math.PI / 180) + layer2_cy;
+                    }
+
+
+                    const border_up = layerArea_up.select(`.multi_layer-border-${layer_index}`)
+                    const border_down = layerArea_down.select(`.multi_layer-border-${layer_index+1}`)
+
+                    if(!border_up.node().isPointInFill(point1) && !border_up.node().isPointInStroke(point1))
+                      return 'none'
+
+                    if(!border_down.node().isPointInFill(point2) && !border_down.node().isPointInStroke(point2))
+                      return 'none'
+
+                    //删除节点
+                    d3.select(point1).remove();
+                    d3.select(point2).remove();
+                      
+                    return null
+                }) 
+
+
+    },
+
+    rearangeZIndex(){//重排层次关系
+      const svg = d3.select(this.$refs['multi_layer_container']).select('.multi_layer_canva');
+      
+      /**
+       * 
+       * 先恢复默认层次关系
+       * 
+       */
+      for(let i = this.innerGraphs.length - 1;i >= 0;i--){
+        const layerArea = svg.select(`.multi_layer_layerArea-${i}`)
+        layerArea.raise();
+        const outerArea = layerArea.select(`.multi_layer_outerArea-${i}`)
+        const innerArea = layerArea.select(`.multi_layer_innerArea-${i}`)
+        const borderArea = layerArea.select(`.multi_layer_borderArea-${i}`)
+        const annoArea = layerArea.select(`.multi_layer_annoArea-${i}`)
+        outerArea.raise();
+        borderArea.raise();
+        innerArea.raise();
+        annoArea.raise();
+      }
+
+      //排序layerArea
+      for(let i = 0;i < this.rotateFocusFlag.length;i++){
+        if(this.rotateFocusFlag[i]){
+          const layerArea = svg.select(`.multi_layer_layerArea-${i}`)
+          layerArea.raise();
+        }
+      }
+      
+
+      //排序borderArea、innerArea、outerArea的优先级
+      for(let i = 0;i < this.rotateFocusFlag.length;i++){
+        if(this.rotateFocusFlag[i]){
+          const layerArea = svg.select(`.multi_layer_layerArea-${i}`)
+          const outerArea = layerArea.select(`.multi_layer_outerArea-${i}`)
+          const innerArea = layerArea.select(`.multi_layer_innerArea-${i}`)
+          const borderArea = layerArea.select(`.multi_layer_borderArea-${i}`)
+          const annoArea = layerArea.select(`.multi_layer_annoArea-${i}`)
+          borderArea.raise();
+          innerArea.raise();
+          outerArea.raise();
+          annoArea.raise();
+        }
+      }
+
+    },
+
+    handleRotateFocusChange(layer_index){//rotateFoucus被改变的回调函数
+        //把其他的rotateFoucus设为false
+        for(let i = 0;i < this.rotateFocusFlag.length;i++){
+          if(i != layer_index){
+            this.rotateFocusFlag[i] = false;
+          }
+        }
+        //更新状态
+        for(let i = 0;i < this.innerGraphs.length;i++){
+          this.updateInnerInfo(i)
+        }
+        for(let i = 0;i < this.outerLinks.length;i++){
+          this.updateOuterInfo(i);
+        }
+        //重排层次
+        this.rearangeZIndex();
 
     },
 
@@ -999,30 +1451,18 @@ export default {
       const innerCircles = layerArea.selectAll(`.multi_layer_innerCircles-${layer_index}`);
       innerCircles.attr("r",this.baseRadius[layer_index])
                   .attr('stroke-width', this.innerCircleStrokeRadio * this.baseRadius[layer_index])
-      
-
-      //修改层内的文本大小和位置
-      const innerText = layerArea.selectAll(`.multi_layer_innerText-${layer_index}`);
-      innerText.style('font-size',this.innerTextSizeRadio * this.baseRadius[layer_index])
-          .attr('x',function(d){
-            return d.x + self.outerPadding.left + self.partHeight * Math.tan(self.borderSkew * Math.PI / 180);
-          })
-          .attr('y',function(d){
-            return d.y + self.outerPadding.top + layer_index * (self.partHeight + self.unitMargin) - 2 * self.baseRadius[layer_index]
-          })
 
 
       //修改连接线的stroke-width
       const innerLinks = layerArea.selectAll(`.multi_layer_innerLinks-${layer_index}`);
       innerLinks.attr('stroke-width', this.baseRadius[layer_index] * this.innerLinkStrokeRadio)
+
+      //更新
+      this.updateInnerInfo(layer_index);
     },
 
     handleOutLinkWidthChange(layer_index){//某一层OuterLinks的宽度被修改（通过设置中的计数器）后的回调函数
-      const svg = d3.select(this.$refs['multi_layer_container']).select('.multi_layer_canva');
-      const layerArea = svg.select(`.multi_layer_layerArea-${layer_index}`)
-      const outerArea = layerArea.select(`.multi_layer_outerArea-${layer_index}`)
-      const outerLinks = outerArea.selectAll(`.multi_layer_outerLinks-${layer_index}`)
-      outerLinks.attr('stroke-width', this.outerLinkWidth[layer_index])
+      this.updateOuterInfo(layer_index)
     },
 
     handleDragModeChange(layer_index){//drag_mode被改变后（通过设置中的单选按钮）的回调函数
@@ -1031,9 +1471,10 @@ export default {
 
     handleInfoShowModeChange(layer_index){//InfoShowMode被改变后的回调函数
       this.updateInnerInfo(layer_index)
-
     },
-
+    handleChangeSelectedNodeMessageColumns(layer_index){//selectedNodeMessageColumns被改变后的回调函数
+      this.updateInnerInfo(layer_index)
+    },
 
 
     exportChosenData(){//导出选择数据
@@ -1047,6 +1488,17 @@ export default {
   },
 
 
+  watch:{
+    isLoading(newvalue){//监听loading，隐藏滚动条
+      if(newvalue){
+        d3.select(this.$refs['multi_layer_container']).style('overflow','hidden')
+      }
+      else{
+        d3.select(this.$refs['multi_layer_container']).style('overflow','auto')
+      }
+      
+    }
+  },
 
 
   mounted(){

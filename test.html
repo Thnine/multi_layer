@@ -1,0 +1,39 @@
+<html>
+    <form name="form1">
+        <p>姓名：<input type="text" name="firstname" id="name"><br></p>
+        <p>密码：<input type="password" name="word" id="word"><br>
+        <p>性别：<input type="radio" name="sex" value="男">男
+        <input type="radio" name="sex" value="女">女<br>
+        <p>爱吃的水果：<input type="checkbox" name="fruit" value="苹果">苹果
+        <input type="checkbox" name="fruit" value="香蕉">香蕉
+            <input type="checkbox" name="fruit" value="橘子">橘子
+                <input type="checkbox" name="fruit" value="芒果">芒果<br>
+        <p>兴趣爱好：<select name="hobby"id="hobby">
+            <option value="运动">运动</option>
+            <option value="看书">看书</option>
+            <option value="游戏">游戏</option>
+            <option value="潜水">潜水</option>
+        </select><br>
+    <p><input type="button" value="提交" onclick="get_value()">
+    </form>
+</html>
+
+<script>
+	function get_value(){
+		var name=document.getElementById("name");
+		    var word=document.getElementById("word");
+            var sex=document.form1.sex;
+            var fruit=document.form1.fruit;
+            var s="";
+            for(var i=0;i<fruit.length;i++)//获取复选框的值
+            	if (fruit[i].checked==true) {//直至没有选中跳出
+            		s=s+fruit[i].value;
+            	}
+            var hobby=document.getElementById("hobby")//获取列表框的值
+         alert ('姓名：'+name.value +'\n'
+		+'密码：'+word.value+'\n'+'性别：'+sex.value+'\n'+'爱吃的水果:'+s+'\n'+
+		'爱好：'+hobby.value);
+	}
+
+
+</script>

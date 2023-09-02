@@ -21,8 +21,8 @@ export default {
     }
   },
   mounted(){
-      //nodes : [{'index':'1',layer:1,...},{'index':'2',layer:0,...},...]
-      //links : [[index1,index2],...]
+      //nodes : [{'index':'1',layer:1,...},{'index':'2',layer:0,...},...] 要求符合标准json格式
+      //links : [[index1,index2,'undir'],...] 要求符合标准json格式
 
       d3.json('static/links.json').then(links=>{
         d3.json('static/nodes.json').then(nodes=>{
@@ -42,15 +42,14 @@ export default {
           node_groups.forEach((n,i)=>{
             let iGraph = {
               'nodes':n[1].map(v=>{
-                return {
-                  'id':v.index,
-                  'message':{
-                    'title':`点${v.index}`,
-                    'data':[
-                      ['id',v.index]
-                    ]
-                   },
+                let obj = {}
+                for(let key in v){
+                  if(key == 'index')
+                    obj['id'] = v[key]
+                  else
+                    obj[key] = v[key]
                 }
+                return obj
               }),
               'links':[],
             }
@@ -62,12 +61,6 @@ export default {
                   'source':l[0],
                   'target':l[1],
                   'type':l[2],
-                  'message':{
-                    'title':l[2]=='dir' ? `指向：${l[0]} -> ${l[1]}` : `连接：${l[0]} - ${l[1]}`,
-                    'data':[
-                      l[2]=='dir'?['指向',`${l[0]} -> ${l[1]}`]:['连接',`${l[0]} - ${l[1]}`]
-                    ]
-                  }
                 })
               }
             }
@@ -85,15 +78,38 @@ export default {
                 'source':l[0],
                 'target':l[1],
                 'type':'undir',
-                'message':{
-                  'title':l[2]=='dir' ? `指向：${l[0]} -> ${l[1]}` : `连接：${l[0]} - ${l[1]}`,
-                  'data':[
-                     ['连接',`${l[0]} - ${l[1]}`]
-                  ]
-                }
               })
             }
           }
+
+          //整理message
+          for(let i = 0;i < innerGraphs.length;i++){
+              let iGraph = innerGraphs[i];         
+              for(let j = 0;j < iGraph.nodes.length;j++){
+                let message = {}
+                for(let key in iGraph.nodes[j]){
+                  message[key] = iGraph.nodes[j][key];
+                }
+                iGraph.nodes[j].message = message
+              }
+              for(let j = 0;j < iGraph.links.length;j++){
+                let message = {}
+                for(let key in iGraph.links[j]){
+                  message[key] = iGraph.links[j][key];
+                }
+                iGraph.links[j].message = message
+              }
+              if(i < innerGraphs.length - 1){
+                for(let j = 0;j < outerLinks[i].links.length;j++){
+                  let message = {}
+                  for(let key in outerLinks[i].links[j]){
+                    message[key] = outerLinks[i].links[j][key];
+                  }
+                  outerLinks[i].links[j].message = message
+                }
+              }
+          }
+
           this.$refs['MultiLayer'].setData(innerGraphs,outerLinks)
           this.$refs['MultiLayer'].draw()
       })

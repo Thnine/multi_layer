@@ -1,14 +1,11 @@
 <template>
   <div ref="info-panel-container" class="info-panel-container">
-    
-    <el-card>
-      <div v-if="messageData.title!==undefined" slot="header">
-        <b>{{messageData.title}}</b>
+
+    <div style="background-color:rgba(0,0,0,0.7);padding:10px;">
+      <div v-for="(m,index) in messageData" :key="index" style="display:flex;align-items:center">
+        <b style="color:white">{{m[0]}}：</b><a style="color:white">{{m[1]}}</a>
       </div>
-      <div v-for="(m,index) in messageData.data" :key="index">
-        <b>{{`${m[0]}：`}}</b><span>{{m[1]}}</span>
-      </div>
-    </el-card>
+    </div>
 
   </div>
 </template>
@@ -29,30 +26,26 @@ export default {
     return {
       /**
        * messageData:
-       * {
-       *    title:'title1',
-       *    data:[
-       *       ['InfoName1','InfoData1'],
-       *       ['InfoName2','InfoData2'],
-       *        ...
-       *    ]
-       * 
-       * }
+       * [
+       *    ['attr1',attr1],
+       *    ['attr2',attr2],
+       *    ...
+       * ]
        * 
        */
-      messageData:{//用于显示的message数据
-        'title':'',
-        'data':[
+      messageData:[//用于显示的message数据
 
-        ]
-      },
+      ],
     }
   },
 
   methods:{
 
     setMessageData(message){
-      this.messageData = message;
+      this.messageData.length = 0;
+      for(let key in message){
+        this.messageData.push([key,message[key]])
+      }
     },
   }
 
