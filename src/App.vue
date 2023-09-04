@@ -21,8 +21,8 @@ export default {
     }
   },
   mounted(){
-      //nodes : [{'index':'1',layer:1,...},{'index':'2',layer:0,...},...] 要求符合标准json格式
-      //links : [[index1,index2,'undir'],...] 要求符合标准json格式
+      //nodes : [{'index':'1',layer:1,...},{'index':'2',layer:0,...},...] 要求符合标准json格式，layer要求为数字，不要求连续，数字小的绘图会在上层
+      //links : [[index1,index2,'undir'],...] 要求符合标准json格式，对于跨层边，index1要求是上层点的index，index2要求是下层点的index
 
       d3.json('static/links.json').then(links=>{
         d3.json('static/nodes.json').then(nodes=>{
