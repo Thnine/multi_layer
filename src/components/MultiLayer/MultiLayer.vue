@@ -66,6 +66,15 @@
                 ></el-input-number>
             </el-col>
           </el-row>
+          <el-row v-show="index != innerGraphs.length-1" type="flex" align="center" style="margin-bottom:20px">
+            <el-col :offset="2" :span="10" style="display:flex;align-items:center">显示跨层线：</el-col>
+            <el-col :offset="0" :span="10" style="display:flex;justify-content:center">
+              <el-radio-group size="mini" v-model="outerLinksShowMode[index]" @input="handleOuterLinksShowMode(index)">
+                <el-radio-button label="显示"></el-radio-button>
+                <el-radio-button label="隐藏"></el-radio-button>
+              </el-radio-group>
+            </el-col>
+          </el-row>
           <el-row v-show="index != innerGraphs.length-1" type="flex" align="center">
             <el-col :offset="2" :span="10" style="display:flex;align-items:center">跨层线宽(下层)：</el-col>
             <el-col :offset="0" :span="10" style="display:flex;justify-content:center">
@@ -198,6 +207,7 @@ export default {
       innerTextSize:20,//层内文本大小
       initDragMode:'缩放',//初始的drag模式 圈选/缩放
       initInfoShowMode:'显示',//初始的信息版显示模式 显示，隐藏
+      initOuterLinksShowMode:'显示',//初始的outerLinks显示模式
 
       //尺寸数据
       svgWidth:0,//svg的宽度
@@ -217,6 +227,7 @@ export default {
       baseRadius:[],//点的基准半径 [radius1,radius2,...]
       drag_mode:[],//点的拖动交互代表的模式，['缩放','圈选',...]
       InfoShowMode:[],//信息显示模式，['显示','隐藏',...]
+      outerLinksShowMode:[],//跨层线显示模式，['显示','隐藏',...]
       rotateFocusFlag:[],//是否旋转聚焦，[true,false,false,...]
       zooms:[],//zoom工具（缩放）
       lassos:[],//lasso工具（圈选）
@@ -298,6 +309,10 @@ export default {
       this.selectedNodeMessageColumns.length = 0;//selectedNodeMessageColumns
       for(let i in this.innerGraphs){
         this.selectedNodeMessageColumns.push(this.nodeMessageColumns[0])
+      }
+      this.outerLinksShowMode.length = 0;//outerLinksShowMode
+      for(let i in this.outerLinks){
+        this.outerLinksShowMode.push(this.initOuterLinksShowMode)
       }
 
     },
@@ -401,7 +416,6 @@ export default {
 
         // await this.getWangZixiaoLayout_upper_more(this.innerGraphs,this.outerLinks);//王子潇布局
 
-        console.log('init_layout:',this.layoutData)
     },
 
     async getWangZixiaoLayout_upper_more(innerGraphs,outerLinks){//王子潇布局（上层点数目>下层点数目）
@@ -965,7 +979,7 @@ export default {
           .join('circle')
           .attr("r",this.baseRadius[layer_index])
           .attr('fill', "#b256f0")
-          .attr('stroke', "white")
+          .attr('stroke', "black")
           .attr('stroke-width', this.innerCircleStrokeRadio * this.baseRadius[layer_index])
           .attr("cx",(d)=>d.x + this.borderAnchor[layer_index][0])
           .attr("cy",(d)=>d.y + this.borderAnchor[layer_index][1])
@@ -1013,6 +1027,7 @@ export default {
               for(let id of data){
                 this.chosenData[layer_index].add(id)
               }
+              this.exportChosenData();
               this.updateInnerInfo(layer_index);
               this.isLoading = false;
             }).catch(err=>{
@@ -1145,6 +1160,8 @@ export default {
                   .attr('opacity', 0.7)
                   .classed(`multi_layer_outerLinks-${layer_index}`,true)
                   .style('display',(d,i)=>{
+                      if(this.outerLinksShowMode[layer_index]=='隐藏')
+                        return 'none'
                       //node1为上层点 //node2为下层点
                       let node1 = nodes1.filter((v, i) => {
                           return d.source == v.id
@@ -1278,10 +1295,10 @@ export default {
           .attr("cy",(d)=>d.y + this.borderAnchor[layer_index][1])
           .attr("r",this.baseRadius[layer_index])
           .attr('stroke-width', this.innerCircleStrokeRadio * this.baseRadius[layer_index])
-          circles.attr('stroke',(d,i)=>{
+          .attr('stroke',(d,i)=>{
             if(this.chosenData[layer_index].has(d.id))
-              return 'black';
-            return 'white';
+              return 'white';
+            return 'black';
           })
       //更新边的位置
       links
@@ -1411,6 +1428,8 @@ export default {
                     return node2.node().getBoundingClientRect().y - svg.node().getBoundingClientRect().y + 0.5 * node2.node().getBoundingClientRect().height;
                 })
                 .style('display',(d,i)=>{
+                    if(this.outerLinksShowMode[layer_index]=='隐藏')
+                      return 'none'
                     //node1为上层点 //node2为下层点
                     let node1 = nodes1.filter((v, i) => {
                         return d.source == v.id
@@ -1503,7 +1522,7 @@ export default {
 
     },
 
-    handleRotateFocusChange(layer_index){//rotateFoucus被改变的回调函数
+    async handleRotateFocusChange(layer_index){//rotateFoucus被改变的回调函数
         //把其他的rotateFoucus设为false
         for(let i = 0;i < this.rotateFocusFlag.length;i++){
           if(i != layer_index){
@@ -1512,9 +1531,12 @@ export default {
         }
 
         //设置布局
-        this.setInitLayout();//先重设布局
-        this.getSingleWangZixiaoLayout_upper_more(this.innerGraphs,this.outerLinks,layer_index);//再设置聚焦层的布局
-
+        await this.setInitLayout();//先重设布局
+        if(this.rotateFocusFlag[layer_index]){
+          console.log('hh')
+          await this.getSingleWangZixiaoLayout_upper_more(this.innerGraphs,this.outerLinks,layer_index);//再设置聚焦层的布局
+        }
+        
         //更新状态
         for(let i = 0;i < this.innerGraphs.length;i++){
           this.updateInnerInfo(i)
@@ -1525,6 +1547,10 @@ export default {
         //重排层次
         this.rearangeZIndex();
 
+    },
+
+    handleOuterLinksShowMode(layer_index){//outerLinks显示状态被修改后的回调函数
+      this.updateOuterInfo(layer_index);
     },
 
     handleRadiusChange(layer_index){//某一层的radius被修改（通过设置中的计数器）后的回调函数
