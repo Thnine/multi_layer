@@ -46,6 +46,15 @@
             </el-col>
           </el-row>
           <el-row type="flex" align="center" style="margin-bottom:20px">
+            <el-col :offset="2" :span="10" style="display:flex;align-items:center">是否展示方向：</el-col>
+            <el-col :offset="0" :span="10" style="display:flex;justify-content:center">
+              <el-radio-group size="mini" v-model="showDirection[index]" @input="handleShowDirectionChange(index)">
+                <el-radio-button label="显示"></el-radio-button>
+                <el-radio-button label="隐藏"></el-radio-button>
+              </el-radio-group>
+            </el-col>
+          </el-row>
+          <el-row type="flex" align="center" style="margin-bottom:20px">
             <el-col :offset="2" :span="10" style="display:flex;align-items:center">翻转式聚焦：</el-col>
             <el-col :offset="0" :span="10" style="display:flex;justify-content:center">
               <el-radio-group v-model="rotateFocusFlag[index]" @input="handleRotateFocusChange(index)">
@@ -158,14 +167,14 @@ export default {
       //   },
       //   {
       //     'nodes':[{'id':17},...],
-      //     'links':[{'source':23,'target':46,'type':'dir'},...],//type表示方向性，dir为有向，undir为无向
+      //     'links':[{'source':23,'target':46,...},...],
       //   },
       //   ...
       // ]
       // 注意：不同层的nodes的id也必须保持独特性
       outerLinks:[],//层之间的连接数据
       // [
-      //   {'links':[{'source':1,'target':17,'type':'undir'},...],},//source是上层,target是下层，//type表示方向性，dir为有向，undir为无向
+      //   {'links':[{'source':1,'target':17,...},...],},//source是上层,target是下层
       //   {...},
       //   ...
       // ]
@@ -178,8 +187,8 @@ export default {
       layoutData:[],//层内点和边布局位置信息
       // [
       //   {
-      //     'nodes':[{'id':1,'x':15.2,'y':16.9,type:'undir'},...],
-      //     'links':[{'source':{'id':3,'x':14.1,'y':14.4,type:'dir'},'target':{'id':2,'x':9.145,'y':0.421,'type':'undir'}},...]
+      //     'nodes':[{'id':1,'x':15.2,'y':16.9},...],
+      //     'links':[{'source':{'id':3,'x':14.1,'y':14.4,...},'target':{'id':2,'x':9.145,'y':0.421,...}},...]
       //   },
       //   ...
       // ]
@@ -208,6 +217,7 @@ export default {
       initDragMode:'缩放',//初始的drag模式 圈选/缩放
       initInfoShowMode:'显示',//初始的信息版显示模式 显示，隐藏
       initOuterLinksShowMode:'显示',//初始的outerLinks显示模式
+      initShowDirection:'隐藏',//初始的showDirection显示模式
 
       //尺寸数据
       svgWidth:0,//svg的宽度
@@ -227,6 +237,7 @@ export default {
       baseRadius:[],//点的基准半径 [radius1,radius2,...]
       drag_mode:[],//点的拖动交互代表的模式，['缩放','圈选',...]
       InfoShowMode:[],//信息显示模式，['显示','隐藏',...]
+      showDirection:[],//节点方向性的显示模式，['显示','隐藏',...]
       outerLinksShowMode:[],//跨层线显示模式，['显示','隐藏',...]
       rotateFocusFlag:[],//是否旋转聚焦，[true,false,false,...]
       zooms:[],//zoom工具（缩放）
@@ -281,9 +292,13 @@ export default {
       for(let i in this.innerGraphs){
         this.drag_mode.push(this.initDragMode)
       }
-      this.InfoShowMode.length = 0;//drag_mode
+      this.InfoShowMode.length = 0;//InfoShowMode
       for(let i in this.innerGraphs){
         this.InfoShowMode.push(this.initInfoShowMode)
+      }
+      this.showDirection.length = 0;//showDirection
+      for(let i in this.innerGraphs){
+        this.showDirection.push(this.initShowDirection);
       }
       this.rotateFocusFlag.length = 0;//rotateFocus
       for(let i in this.innerGraphs){
@@ -412,9 +427,11 @@ export default {
          * 
          */
 
-        this.getForceDirectedLayout(this.innerGraphs,this.outerLinks);//力导引布局
+        // this.getForceDirectedLayout(this.innerGraphs,this.outerLinks);//力导引布局
 
-        // await this.getWangZixiaoLayout_upper_more(this.innerGraphs,this.outerLinks);//王子潇布局
+        // await this.getWangZixiaoLayout_upper_more(this.innerGraphs,this.outerLinks);//王子潇布局（上多）
+
+        await this.getWangZixiaoLayout_upper_less(this.innerGraphs,this.outerLinks);//王子潇布局（上少）
 
     },
 
@@ -492,6 +509,170 @@ export default {
         
       })
       
+      await axios({
+        url:'api/getWangZixiaoLayout',
+        method:"POST",
+        data:{
+          'layer_data':layer_data,
+          'node_data':node_data,
+          'edge_data':edge_data,
+        }
+      }).then((response)=>{
+        const data = response.data;
+        /**
+         * 
+         * 打包为layoutData
+         * 
+         */
+        let layoutData = []
+        for(let layer_index = 0;layer_index < data.length;layer_index++){
+          layoutData.push({
+            'nodes':[],
+            'links':[],
+          })
+          //装填点
+          innerGraphs[layer_index].nodes.forEach(v=>{
+            let posNode = JSON.parse(JSON.stringify(v))
+            posNode['x'] = data[layer_index][layer_map[layer_index][String(v.id)] - 1][0];
+            posNode['y'] = data[layer_index][layer_map[layer_index][String(v.id)] - 1][1];
+            layoutData[layer_index].nodes.push(posNode)
+          })
+
+          /**
+           * 
+           * 变换点坐标到中心为(0.5*initAreaWidth,0.5*initAreaHeight)，边界适应边框。
+           * 
+           */
+          const maxX = Math.max(...layoutData[layer_index].nodes.map(v=>v.x))
+          const minX = Math.min(...layoutData[layer_index].nodes.map(v=>v.x))
+          const maxY = Math.max(...layoutData[layer_index].nodes.map(v=>v.y))
+          const minY = Math.min(...layoutData[layer_index].nodes.map(v=>v.y))
+          //变换
+          const xScale = d3.scaleLinear()
+            .domain([minX,maxX])
+            .range([this.baseRadius[layer_index] + this.initInnerPadding,this.initAreaWidth - this.baseRadius[layer_index] - this.initInnerPadding])
+          const yScale = d3.scaleLinear()
+            .domain([minY,maxY])
+            .range([this.baseRadius[layer_index] + this.initInnerPadding,this.initAreaHeight - this.baseRadius[layer_index] - this.initInnerPadding])
+          
+          layoutData[layer_index].nodes.forEach((v,i)=>{
+            layoutData[layer_index].nodes[i].x = xScale(layoutData[layer_index].nodes[i].x)
+            layoutData[layer_index].nodes[i].y = yScale(layoutData[layer_index].nodes[i].y)
+          })
+
+          //装填边
+          innerGraphs[layer_index].links.forEach(l=>{
+              let tempLink = JSON.parse(JSON.stringify(l))
+              layoutData[layer_index].nodes.forEach(v=>{
+                if(parseInt(v.id)==parseInt(l.source)){//source
+                  tempLink['source']={
+                    'id':v.id,
+                    'x':v.x,
+                    'y':v.y,
+                  }
+                }
+                else if(parseInt(v.id)==parseInt(l.target)){//target
+                  tempLink['target']={
+                    'id':v.id,
+                    'x':v.x,
+                    'y':v.y
+                  }
+                }
+              })
+              layoutData[layer_index].links.push(tempLink)
+          })
+          
+        }
+        
+        /**
+         * 
+         * 把布局数据传入给this.layoutData
+         * 
+         */
+        this.layoutData = layoutData
+
+      }).catch((err)=>{
+        console.log('err:',err)
+      })
+
+    },
+
+    async getWangZixiaoLayout_upper_less(innerGraphs,outerLinks){//王子潇布局（上层点数目<下层点数目）
+      /**
+       *
+       * 恰好适应边框，布局的左上角(0,0)在画布中对应borderAnchor
+       * 
+       * 要求: 1.上层点多于下层点
+       * 
+       */
+
+
+      /**
+       * 
+       * layer_data、node_data、edge_data为最后要传给子潇算法的参数
+       * 
+       */
+      
+
+      let layer_data = ['layerID layerLabel']
+      let layer_map = [] //各层的原始节点id->算法节点id的映射
+      let node_data = ['nodeID nodeAge nodeTenure nodeLevel nodeDepartment']
+      let edge_data = []
+      for(let layer_index in innerGraphs){
+        layer_data.push(`${parseInt(layer_index)+1} layer_name`);//构建layer data
+        //初始化layer_map
+        layer_map.push({})  
+      }
+      let whole_id_set = new Set() //所有会出现的算法节点id的集合
+      innerGraphs[innerGraphs.length - 1].nodes.forEach((v,i)=>{
+        layer_map[innerGraphs.length - 1][String(v.id)] = (i + 1)//基于节点最多层生成算法id，并定义算法id为1-n
+        whole_id_set.add((i + 1))
+        node_data.push(`${(i + 1)} 0 0 0 0`)
+      })
+      for(let layer_index in outerLinks){
+        //倒序给layer_map赋值
+        let ol = outerLinks[outerLinks.length - parseInt(layer_index) - 1].links;//层间连接边
+        let upper = layer_map[outerLinks.length - parseInt(layer_index) - 1];//上层映射
+        let lower = layer_map[outerLinks.length - parseInt(layer_index)];//下层映射
+        let new_id_set = new Set(whole_id_set)
+        let raw_upper_id_queue = innerGraphs[outerLinks.length - parseInt(layer_index) - 1].nodes.map(v=>v.id)//保存了上层的innerGrah中的id
+        
+        ol.forEach((v,i)=>{//利用边建立关系
+          /**
+           * 
+           * 如果存在多个上层点对同一个下层点，那么下层点的算法id为第一次遍历到的连接边的上层点
+           * 如果存在一个上层点对多个下层点，那么这多个下层点用同样的算法id
+           * 
+           */
+
+          if(upper[String(v.source)] === undefined){//如果下层点没有被赋予过算法id
+            upper[String(v.source)] = lower[String(v.target)]
+            new_id_set.delete(lower[String(v.target)])
+            raw_upper_id_queue.splice(raw_upper_id_queue.indexOf(parseInt(v.source)),1)
+          }
+        })
+        //分配剩余的id
+        for(let remain_id of Array.from(new_id_set)){
+          if(raw_upper_id_queue.length != 0){//raw_upper_id_queue还有剩余，那么优先给id绑定真实点的raw_id
+            upper[String(raw_upper_id_queue.pop())] = remain_id;
+          }
+          else{//raw_upper_id_queue无剩余，那么给id绑定到虚拟的raw_id，虚拟的raw_id为字符串，格式如`fake-${remain_id}`
+            upper[`fake-${remain_id}`] = remain_id;
+          }
+        }
+      }
+
+
+      //添加edge_data
+      innerGraphs.forEach((v,layer_index)=>{
+        let links = v.links;
+        links.forEach((l)=>{
+            edge_data.push(`${layer_index+1} ${layer_map[layer_index][String(l.source)]} ${layer_map[layer_index][String(l.target)]} 1`)
+        })
+        
+      })
+      
+
       await axios({
         url:'api/getWangZixiaoLayout',
         method:"POST",
@@ -949,12 +1130,6 @@ export default {
           .join('line')
           .attr('stroke-width', this.baseRadius[layer_index] * this.innerLinkStrokeRadio)
           .style('stroke', "#666666")
-          .attr('marker-end',(d)=>{
-            if(d.type == 'dir')
-              return `url(#multi_layer_inner_arrow-${layer_index}-${this.nanoid})`
-            else if(d.type == 'undir')
-              return null
-          })
           .attr('x1', (d) => d.source.x + this.borderAnchor[layer_index][0])
           .attr('y1', (d) => d.source.y + this.borderAnchor[layer_index][1])
           .attr('x2', (d) => d.target.x + this.borderAnchor[layer_index][0])
@@ -1300,7 +1475,7 @@ export default {
               return 'white';
             return 'black';
           })
-      //更新边的位置
+      //更新边的位置，方向性
       links
           .data(this.layoutData[layer_index].links)
           .attr('stroke-width', this.baseRadius[layer_index] * this.innerLinkStrokeRadio)
@@ -1308,6 +1483,12 @@ export default {
           .attr('y1', (d) => d.source.y + this.borderAnchor[layer_index][1])
           .attr('x2', (d) => d.target.x + this.borderAnchor[layer_index][0])
           .attr('y2', (d) => d.target.y + this.borderAnchor[layer_index][1])
+          .attr('marker-end',(d)=>{
+              if(this.showDirection[layer_index] == '显示')
+                return `url(#multi_layer_inner_arrow-${layer_index}-${this.nanoid})`
+              else
+                return null
+          })
 
 
       //更新drag_mode的事件绑定
@@ -1602,6 +1783,10 @@ export default {
     },
 
     handleInfoShowModeChange(layer_index){//InfoShowMode被改变后的回调函数
+      this.updateInnerInfo(layer_index)
+    },
+
+    handleShowDirectionChange(layer_index){//showDirection被改变后的回调函数
       this.updateInnerInfo(layer_index)
     },
 
