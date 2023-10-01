@@ -13,12 +13,6 @@
 
 
 <script>
-import * as d3 from 'd3';
-import {Card} from 'element-ui';
-import Vue from 'vue'
-import 'element-ui/lib/theme-chalk/index.css';
-
-Vue.component(Card.name, Card);
 
 export default {
   name: 'InfoPanel',

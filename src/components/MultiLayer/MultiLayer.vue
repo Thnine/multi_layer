@@ -125,8 +125,6 @@
  */
 
 
-
-
 import * as d3 from 'd3'
 import {nanoid} from 'nanoid'
 import {Button,Popover,Row,Col,InputNumber,Loading,RadioButton,Radio,RadioGroup,Checkbox,Select,Option} from 'element-ui';
@@ -162,33 +160,33 @@ export default {
       innerGraphs:[],//每层的内部数据
       // [
       //   {
-      //     'nodes':[{'id':1},...],
-      //     'links':[{'source':1,'target':2},...],
+      //     'nodes':[{'id':'1'},...],
+      //     'links':[{'source':'1','target':'2'},...],
       //   },
       //   {
-      //     'nodes':[{'id':17},...],
-      //     'links':[{'source':23,'target':46,...},...],
+      //     'nodes':[{'id':'17'},...],
+      //     'links':[{'source':'23','target':'46',...},...],
       //   },
       //   ...
       // ]
       // 注意：不同层的nodes的id也必须保持独特性
       outerLinks:[],//层之间的连接数据
       // [
-      //   {'links':[{'source':1,'target':17,...},...],},//source是上层,target是下层
+      //   {'links':[{'source':'1','target':'17',...},...],},//必须满足source是上层,target是下层
       //   {...},
       //   ...
       // ]
 
 
-      //innerGraphs和outerLinks的每个点和边的数据对象后续还会附着一个键值为message的对象，保存了数据传入时所有属性hi，用于消息面板展示
+      //innerGraphs和outerLinks的每个点和边的数据对象后续还会附着一个键值为message的对象，保存了数据传入时所有属性值，用于消息面板展示
 
 
       //主要数据
       layoutData:[],//层内点和边布局位置信息
       // [
       //   {
-      //     'nodes':[{'id':1,'x':15.2,'y':16.9},...],
-      //     'links':[{'source':{'id':3,'x':14.1,'y':14.4,...},'target':{'id':2,'x':9.145,'y':0.421,...}},...]
+      //     'nodes':[{'id':'1','x':15.2,'y':16.9},...],
+      //     'links':[{'source':{'id':'3','x':14.1,'y':14.4,...},'target':{'id':'2','x':9.145,'y':0.421,...}},...]
       //   },
       //   ...
       // ]
@@ -205,7 +203,7 @@ export default {
       plotSkew:45,//图像的倾斜角度（空间上的倾斜），单位deg
       FocusSkew:130,//在聚焦状态下的倾斜角度，单位deg (0-180)
       WHRadio:0.5,//边框BBox的长宽比
-      unitMargin:40,//边框之间的上下间距
+      unitMargin:40,//每层单元格之间的上下间距
       initRadius:6,//点的初始基准半径
       initOuterLinkWidth:3.5,//初始的跨层连线宽度
       initInnerPadding:30,//每层的plot在初始的适应状态下相对于initArea的padding（水平方向准，垂直方向不一定准）
@@ -232,7 +230,7 @@ export default {
 
       //其他数据
       isLoading:false,//是否加入加载页面
-      chosenData:[],//被选择的数据，每层的选择数据的id构成的一个Set，这些数组依序列在chosenData中：[[1,3,4],[22,24],...]
+      chosenData:[],//被选择的数据，每层的选择数据的id构成的一个Set，这些数组依序列在chosenData中：[['1','3','4'],['22','24'],...]
       outerLinkWidth:[],//跨层连线的宽度
       baseRadius:[],//点的基准半径 [radius1,radius2,...]
       drag_mode:[],//点的拖动交互代表的模式，['缩放','圈选',...]
@@ -429,9 +427,9 @@ export default {
 
         // this.getForceDirectedLayout(this.innerGraphs,this.outerLinks);//力导引布局
 
-        // await this.getWangZixiaoLayout_upper_more(this.innerGraphs,this.outerLinks);//王子潇布局（上多）
+        await this.getWangZixiaoLayout_upper_more(this.innerGraphs,this.outerLinks);//王子潇布局（上多）
 
-        await this.getWangZixiaoLayout_upper_less(this.innerGraphs,this.outerLinks);//王子潇布局（上少）
+        // await this.getWangZixiaoLayout_upper_less(this.innerGraphs,this.outerLinks);//王子潇布局（上少）
 
     },
 
@@ -487,7 +485,7 @@ export default {
           if(lower[String(v.target)] === undefined){//如果下层点没有被赋予过算法id
             lower[String(v.target)] = upper[String(v.source)]
             new_id_set.delete(upper[String(v.source)])
-            raw_lower_id_queue.splice(raw_lower_id_queue.indexOf(parseInt(v.target)),1)
+            raw_lower_id_queue.splice(raw_lower_id_queue.indexOf(String(v.target)),1)
           }
         })
         //分配剩余的id
@@ -508,7 +506,7 @@ export default {
         })
         
       })
-      
+
       await axios({
         url:'api/getWangZixiaoLayout',
         method:"POST",
@@ -524,6 +522,7 @@ export default {
          * 打包为layoutData
          * 
          */
+
         let layoutData = []
         for(let layer_index = 0;layer_index < data.length;layer_index++){
           layoutData.push({
@@ -564,14 +563,14 @@ export default {
           innerGraphs[layer_index].links.forEach(l=>{
               let tempLink = JSON.parse(JSON.stringify(l))
               layoutData[layer_index].nodes.forEach(v=>{
-                if(parseInt(v.id)==parseInt(l.source)){//source
+                if(v.id==l.source){//source
                   tempLink['source']={
                     'id':v.id,
                     'x':v.x,
                     'y':v.y,
                   }
                 }
-                else if(parseInt(v.id)==parseInt(l.target)){//target
+                else if(v.id==l.target){//target
                   tempLink['target']={
                     'id':v.id,
                     'x':v.x,
@@ -648,7 +647,7 @@ export default {
           if(upper[String(v.source)] === undefined){//如果下层点没有被赋予过算法id
             upper[String(v.source)] = lower[String(v.target)]
             new_id_set.delete(lower[String(v.target)])
-            raw_upper_id_queue.splice(raw_upper_id_queue.indexOf(parseInt(v.source)),1)
+            raw_upper_id_queue.splice(raw_upper_id_queue.indexOf(v.source),1)
           }
         })
         //分配剩余的id
@@ -728,14 +727,14 @@ export default {
           innerGraphs[layer_index].links.forEach(l=>{
               let tempLink = JSON.parse(JSON.stringify(l))
               layoutData[layer_index].nodes.forEach(v=>{
-                if(parseInt(v.id)==parseInt(l.source)){//source
+                if(v.id==l.source){//source
                   tempLink['source']={
                     'id':v.id,
                     'x':v.x,
                     'y':v.y,
                   }
                 }
-                else if(parseInt(v.id)==parseInt(l.target)){//target
+                else if(v.id==l.target){//target
                   tempLink['target']={
                     'id':v.id,
                     'x':v.x,
@@ -914,7 +913,7 @@ export default {
           if(lower[String(v.target)] === undefined){//如果下层点没有被赋予过算法id
             lower[String(v.target)] = upper[String(v.source)]
             new_id_set.delete(upper[String(v.source)])
-            raw_lower_id_queue.splice(raw_lower_id_queue.indexOf(parseInt(v.target)),1)
+            raw_lower_id_queue.splice(raw_lower_id_queue.indexOf(v.target),1)
           }
         })
         //分配剩余的id
@@ -991,14 +990,14 @@ export default {
           innerGraphs[layer_index].links.forEach(l=>{
               let tempLink = JSON.parse(JSON.stringify(l))
               layoutData[layer_index].nodes.forEach(v=>{
-                if(parseInt(v.id)==parseInt(l.source)){//source
+                if(v.id==l.source){//source
                   tempLink['source']={
                     'id':v.id,
                     'x':v.x,
                     'y':v.y,
                   }
                 }
-                else if(parseInt(v.id)==parseInt(l.target)){//target
+                else if(v.id==l.target){//target
                   tempLink['target']={
                     'id':v.id,
                     'x':v.x,
@@ -1237,6 +1236,7 @@ export default {
                        .scaleExtent([0.1, 40])
                        .translateExtent([[-10000, -10000], [10000, 10000]])
                        .on("zoom",()=>{
+                            console.log('transform:',d3.event.transform)
                             zoomG.attr("transform",d3.event.transform)
                             this.updateInnerInfo(layer_index);                                         
                             this.updateOuterInfo(layer_index)
@@ -1525,7 +1525,7 @@ export default {
                 let _node = nodes.filter((v, i) => {
                         return d.id == v.id
                     })
-                return _node.node().getBoundingClientRect().y - svg.node().getBoundingClientRect().y - 2// - 0.5 * d3.select(this).node().getBoundingClientRect().height;
+                return _node.node().getBoundingClientRect().y - svg.node().getBoundingClientRect().y - 0.5 * d3.select(this).node().getBoundingClientRect().height;
               })
               .style('display',(d)=>{
                   if(this.InfoShowMode[layer_index] == '显示'){
@@ -1714,7 +1714,6 @@ export default {
         //设置布局
         await this.setInitLayout();//先重设布局
         if(this.rotateFocusFlag[layer_index]){
-          console.log('hh')
           await this.getSingleWangZixiaoLayout_upper_more(this.innerGraphs,this.outerLinks,layer_index);//再设置聚焦层的布局
         }
         
@@ -1793,7 +1792,6 @@ export default {
     handleChangeSelectedNodeMessageColumns(layer_index){//selectedNodeMessageColumns被改变后的回调函数
       this.updateInnerInfo(layer_index)
     },
-
 
     exportChosenData(){//导出选择数据
       //绑定事件：@exportChosenData

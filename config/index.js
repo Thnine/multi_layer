@@ -13,7 +13,7 @@ module.exports = {
     proxyTable: {
 
         '/api': {
-          target: "http://127.0.0.1:5000", //代理域名
+          target: "http://127.0.0.1:5050", //代理域名
           changeOrigin: true,
           pathRewrite: {
               "":"" //代理路径

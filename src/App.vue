@@ -135,9 +135,6 @@ export default {
               'nodes':n[1].map(v=>{
                 let obj = {}
                 for(let key in v){
-                  if(key == 'id')
-                    obj['id'] = v[key]
-                  else
                     obj[key] = v[key]
                 }
                 return obj
@@ -205,7 +202,7 @@ export default {
           }
     }
 
-    d3.json('static/multi_layer(up-less).json').then((json_data)=>{
+    d3.json('static/multi_layer(up-more).json').then((json_data)=>{
       let data = convertData(json_data)
       this.$refs['MultiLayer'].setData(data.innerGraphs,data.outerLinks)
       this.$refs['MultiLayer'].draw()
