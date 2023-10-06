@@ -1,6 +1,6 @@
 <template>
   <div id="app">
-    <div style="width:800px;height:1000px">
+    <div style="width:600px;height:1000px">
       <MultiLayer @exportChosenData="handleExportChoseData" style="margin:70px 40px" ref="MultiLayer"/>
     </div>
   </div>
@@ -168,39 +168,13 @@ export default {
             }
           }
 
-          //整理message
-          for(let i = 0;i < innerGraphs.length;i++){
-              let iGraph = innerGraphs[i];         
-              for(let j = 0;j < iGraph.nodes.length;j++){
-                let message = {}
-                for(let key in iGraph.nodes[j]){
-                  message[key] = iGraph.nodes[j][key];
-                }
-                iGraph.nodes[j].message = message
-              }
-              for(let j = 0;j < iGraph.links.length;j++){
-                let message = {}
-                for(let key in iGraph.links[j]){
-                  message[key] = iGraph.links[j][key];
-                }
-                iGraph.links[j].message = message
-              }
-              if(i < innerGraphs.length - 1){
-                for(let j = 0;j < outerLinks[i].links.length;j++){
-                  let message = {}
-                  for(let key in outerLinks[i].links[j]){
-                    message[key] = outerLinks[i].links[j][key];
-                  }
-                  outerLinks[i].links[j].message = message
-                }
-              }
-          }
-
           return {
             'innerGraphs':innerGraphs,
             'outerLinks':outerLinks,
           }
     }
+
+    console.log(d3.json('static/multi_layer(up-more).json'))
 
     d3.json('static/multi_layer(up-more).json').then((json_data)=>{
       let data = convertData(json_data)
@@ -208,6 +182,12 @@ export default {
       this.$refs['MultiLayer'].draw()
     })
 
+    // d3.json('static/multi_layer-test-innerGraphs.json').then((innerGraphs)=>{
+    //   d3.json('static/multi_layer-test-outerLinks.json').then((outerLinks)=>{
+    //       this.$refs['MultiLayer'].setData(innerGraphs,outerLinks)
+    //       this.$refs['MultiLayer'].draw()
+    //   })
+    // })
     
 
   }

@@ -258,12 +258,43 @@ export default {
      * 
      */
     setData(innerGraphs,outerLinks){//绑定数据
+
+      //整理message
+      for(let i = 0;i < innerGraphs.length;i++){
+          let iGraph = innerGraphs[i];         
+          for(let j = 0;j < iGraph.nodes.length;j++){
+            let message = {}
+            for(let key in iGraph.nodes[j]){
+              message[key] = iGraph.nodes[j][key];
+            }
+            iGraph.nodes[j].message = message
+          }
+          for(let j = 0;j < iGraph.links.length;j++){
+            let message = {}
+            for(let key in iGraph.links[j]){
+              message[key] = iGraph.links[j][key];
+            }
+            iGraph.links[j].message = message
+          }
+          if(i < innerGraphs.length - 1){
+            for(let j = 0;j < outerLinks[i].links.length;j++){
+              let message = {}
+              for(let key in outerLinks[i].links[j]){
+                message[key] = outerLinks[i].links[j][key];
+              }
+              outerLinks[i].links[j].message = message
+            }
+          }
+      }
+
       //绑定数据
       this.innerGraphs = JSON.parse(JSON.stringify(innerGraphs));
       this.outerLinks = JSON.parse(JSON.stringify(outerLinks));
       
       console.log('innerGraphs',this.innerGraphs)
       console.log('outerLinks:',this.outerLinks)
+
+
 
       //清理之前的数据，并且初始化一些数据
       this.anchor.length = 0;//anchor
@@ -425,9 +456,9 @@ export default {
          * 
          */
 
-        // this.getForceDirectedLayout(this.innerGraphs,this.outerLinks);//力导引布局
+        this.getForceDirectedLayout(this.innerGraphs,this.outerLinks);//力导引布局
 
-        await this.getWangZixiaoLayout_upper_more(this.innerGraphs,this.outerLinks);//王子潇布局（上多）
+        // await this.getWangZixiaoLayout_upper_more(this.innerGraphs,this.outerLinks);//王子潇布局（上多）
 
         // await this.getWangZixiaoLayout_upper_less(this.innerGraphs,this.outerLinks);//王子潇布局（上少）
 
@@ -773,10 +804,14 @@ export default {
 
       let layoutData = []
 
+
+
       for(let layer_index in innerGraphs){
           let _nodes = JSON.parse(JSON.stringify(innerGraphs[layer_index].nodes));
           let _links = JSON.parse(JSON.stringify(innerGraphs[layer_index].links));
 
+          console.log(JSON.parse(JSON.stringify(innerGraphs[layer_index].nodes)))
+          console.log(JSON.parse(JSON.stringify(innerGraphs[layer_index].links)))
 
           let simulation = d3.forceSimulation()
                               .nodes(_nodes)
@@ -790,7 +825,6 @@ export default {
 
           simulation.stop();
           simulation.tick(300);
-
 
 
           /**
@@ -1236,7 +1270,6 @@ export default {
                        .scaleExtent([0.1, 40])
                        .translateExtent([[-10000, -10000], [10000, 10000]])
                        .on("zoom",()=>{
-                            console.log('transform:',d3.event.transform)
                             zoomG.attr("transform",d3.event.transform)
                             this.updateInnerInfo(layer_index);                                         
                             this.updateOuterInfo(layer_index)
