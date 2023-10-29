@@ -1,6 +1,6 @@
 <template>
   <div id="app">
-    <div style="width:600px;height:1000px">
+    <div style="width:1000px;height:1000px">
       <MultiLayer @exportChosenData="handleExportChoseData" style="margin:70px 40px" ref="MultiLayer"/>
     </div>
   </div>
@@ -174,9 +174,8 @@ export default {
           }
     }
 
-    console.log(d3.json('static/multi_layer(up-more).json'))
 
-    d3.json('static/multi_layer(up-more).json').then((json_data)=>{
+    d3.json('static/testwzx.json').then((json_data)=>{
       let data = convertData(json_data)
       this.$refs['MultiLayer'].setData(data.innerGraphs,data.outerLinks)
       this.$refs['MultiLayer'].draw()

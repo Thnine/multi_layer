@@ -444,7 +444,7 @@ export default {
 
         /**
          * 
-         * 这里是视图一开始布局算法的入口
+         * 这里是视图设定初始布局算法
          * 
          */
 
@@ -458,606 +458,13 @@ export default {
 
         this.getForceDirectedLayout(this.innerGraphs,this.outerLinks);//力导引布局
 
+        // await this.getWangZixiaoLayout(this.innerGraphs,this.outerLinks)
+
         // await this.getWangZixiaoLayout_upper_more(this.innerGraphs,this.outerLinks);//王子潇布局（上多）
 
         // await this.getWangZixiaoLayout_upper_less(this.innerGraphs,this.outerLinks);//王子潇布局（上少）
 
     },
-
-    async getWangZixiaoLayout_upper_more(innerGraphs,outerLinks){//王子潇布局（上层点数目>下层点数目）
-      /**
-       *
-       * 恰好适应边框，布局的左上角(0,0)在画布中对应borderAnchor
-       * 
-       * 要求: 1.上层点多于下层点
-       * 
-       */
-
-
-      /**
-       * 
-       * layer_data、node_data、edge_data为最后要传给子潇算法的参数
-       * 
-       */
-      
-
-      let layer_data = ['layerID layerLabel']
-      let layer_map = [] //各层的原始节点id->算法节点id的映射
-      let node_data = ['nodeID nodeAge nodeTenure nodeLevel nodeDepartment']
-      let edge_data = []
-      for(let layer_index in innerGraphs){
-        layer_data.push(`${parseInt(layer_index)+1} layer_name`);//构建layer data
-        //初始化layer_map
-        layer_map.push({})  
-      }
-      let whole_id_set = new Set() //所有会出现的算法节点id的集合
-      innerGraphs[0].nodes.forEach((v,i)=>{
-        layer_map[0][String(v.id)] = (i + 1)//基于节点最多层生成算法id，并定义算法id为1-n
-        whole_id_set.add((i + 1))
-        node_data.push(`${(i + 1)} 0 0 0 0`)
-      })
-      for(let layer_index in outerLinks){
-        //正序给layer_map赋值
-        let ol = outerLinks[parseInt(layer_index)].links;//层间连接边
-        let upper = layer_map[parseInt(layer_index)];//上层映射
-        let lower = layer_map[parseInt(layer_index)+1];//下层映射
-        
-        let new_id_set = new Set(whole_id_set)
-        let raw_lower_id_queue = innerGraphs[parseInt(layer_index)+1].nodes.map(v=>v.id)//保存了下层的innerGrah中的id
-        
-        ol.forEach((v,i)=>{//利用边建立关系
-          /**
-           * 
-           * 如果存在多个上层点对同一个下层点，那么下层点的算法id为第一次遍历到的连接边的上层点
-           * 如果存在一个上层点对多个下层点，那么这多个下层点用同样的算法id
-           * 
-           */
-
-          if(lower[String(v.target)] === undefined){//如果下层点没有被赋予过算法id
-            lower[String(v.target)] = upper[String(v.source)]
-            new_id_set.delete(upper[String(v.source)])
-            raw_lower_id_queue.splice(raw_lower_id_queue.indexOf(String(v.target)),1)
-          }
-        })
-        //分配剩余的id
-        for(let remain_id of Array.from(new_id_set)){
-          if(raw_lower_id_queue.length != 0){//raw_lower_id_queue还有剩余，那么优先给id绑定真实点的raw_id
-            lower[String(raw_lower_id_queue.pop())] = remain_id;
-          }
-          else{//raw_lower_id_queue无剩余，那么给id绑定到虚拟的raw_id，虚拟的raw_id为字符串，格式如`fake-${remain_id}`
-            lower[`fake-${remain_id}`] = remain_id;
-          }
-        }
-      }
-      //添加edge_data
-      innerGraphs.forEach((v,layer_index)=>{
-        let links = v.links;
-        links.forEach((l)=>{
-            edge_data.push(`${layer_index+1} ${layer_map[layer_index][String(l.source)]} ${layer_map[layer_index][String(l.target)]} 1`)
-        })
-        
-      })
-
-      await axios({
-        url:'api/getWangZixiaoLayout',
-        method:"POST",
-        data:{
-          'layer_data':layer_data,
-          'node_data':node_data,
-          'edge_data':edge_data,
-        }
-      }).then((response)=>{
-        const data = response.data;
-        /**
-         * 
-         * 打包为layoutData
-         * 
-         */
-
-        let layoutData = []
-        for(let layer_index = 0;layer_index < data.length;layer_index++){
-          layoutData.push({
-            'nodes':[],
-            'links':[],
-          })
-          //装填点
-          innerGraphs[layer_index].nodes.forEach(v=>{
-            let posNode = JSON.parse(JSON.stringify(v))
-            posNode['x'] = data[layer_index][layer_map[layer_index][String(v.id)] - 1][0];
-            posNode['y'] = data[layer_index][layer_map[layer_index][String(v.id)] - 1][1];
-            layoutData[layer_index].nodes.push(posNode)
-          })
-
-          /**
-           * 
-           * 变换点坐标到中心为(0.5*initAreaWidth,0.5*initAreaHeight)，边界适应边框。
-           * 
-           */
-          const maxX = Math.max(...layoutData[layer_index].nodes.map(v=>v.x))
-          const minX = Math.min(...layoutData[layer_index].nodes.map(v=>v.x))
-          const maxY = Math.max(...layoutData[layer_index].nodes.map(v=>v.y))
-          const minY = Math.min(...layoutData[layer_index].nodes.map(v=>v.y))
-          //变换
-          const xScale = d3.scaleLinear()
-            .domain([minX,maxX])
-            .range([this.baseRadius[layer_index] + this.initInnerPadding,this.initAreaWidth - this.baseRadius[layer_index] - this.initInnerPadding])
-          const yScale = d3.scaleLinear()
-            .domain([minY,maxY])
-            .range([this.baseRadius[layer_index] + this.initInnerPadding,this.initAreaHeight - this.baseRadius[layer_index] - this.initInnerPadding])
-          
-          layoutData[layer_index].nodes.forEach((v,i)=>{
-            layoutData[layer_index].nodes[i].x = xScale(layoutData[layer_index].nodes[i].x)
-            layoutData[layer_index].nodes[i].y = yScale(layoutData[layer_index].nodes[i].y)
-          })
-
-          //装填边
-          innerGraphs[layer_index].links.forEach(l=>{
-              let tempLink = JSON.parse(JSON.stringify(l))
-              layoutData[layer_index].nodes.forEach(v=>{
-                if(v.id==l.source){//source
-                  tempLink['source']={
-                    'id':v.id,
-                    'x':v.x,
-                    'y':v.y,
-                  }
-                }
-                else if(v.id==l.target){//target
-                  tempLink['target']={
-                    'id':v.id,
-                    'x':v.x,
-                    'y':v.y
-                  }
-                }
-              })
-              layoutData[layer_index].links.push(tempLink)
-          })
-          
-        }
-        
-        /**
-         * 
-         * 把布局数据传入给this.layoutData
-         * 
-         */
-        this.layoutData = layoutData
-
-      }).catch((err)=>{
-        console.log('err:',err)
-      })
-
-    },
-
-    async getWangZixiaoLayout_upper_less(innerGraphs,outerLinks){//王子潇布局（上层点数目<下层点数目）
-      /**
-       *
-       * 恰好适应边框，布局的左上角(0,0)在画布中对应borderAnchor
-       * 
-       * 要求: 1.上层点多于下层点
-       * 
-       */
-
-
-      /**
-       * 
-       * layer_data、node_data、edge_data为最后要传给子潇算法的参数
-       * 
-       */
-      
-
-      let layer_data = ['layerID layerLabel']
-      let layer_map = [] //各层的原始节点id->算法节点id的映射
-      let node_data = ['nodeID nodeAge nodeTenure nodeLevel nodeDepartment']
-      let edge_data = []
-      for(let layer_index in innerGraphs){
-        layer_data.push(`${parseInt(layer_index)+1} layer_name`);//构建layer data
-        //初始化layer_map
-        layer_map.push({})  
-      }
-      let whole_id_set = new Set() //所有会出现的算法节点id的集合
-      innerGraphs[innerGraphs.length - 1].nodes.forEach((v,i)=>{
-        layer_map[innerGraphs.length - 1][String(v.id)] = (i + 1)//基于节点最多层生成算法id，并定义算法id为1-n
-        whole_id_set.add((i + 1))
-        node_data.push(`${(i + 1)} 0 0 0 0`)
-      })
-      for(let layer_index in outerLinks){
-        //倒序给layer_map赋值
-        let ol = outerLinks[outerLinks.length - parseInt(layer_index) - 1].links;//层间连接边
-        let upper = layer_map[outerLinks.length - parseInt(layer_index) - 1];//上层映射
-        let lower = layer_map[outerLinks.length - parseInt(layer_index)];//下层映射
-        let new_id_set = new Set(whole_id_set)
-        let raw_upper_id_queue = innerGraphs[outerLinks.length - parseInt(layer_index) - 1].nodes.map(v=>v.id)//保存了上层的innerGrah中的id
-        
-        ol.forEach((v,i)=>{//利用边建立关系
-          /**
-           * 
-           * 如果存在多个上层点对同一个下层点，那么下层点的算法id为第一次遍历到的连接边的上层点
-           * 如果存在一个上层点对多个下层点，那么这多个下层点用同样的算法id
-           * 
-           */
-
-          if(upper[String(v.source)] === undefined){//如果下层点没有被赋予过算法id
-            upper[String(v.source)] = lower[String(v.target)]
-            new_id_set.delete(lower[String(v.target)])
-            raw_upper_id_queue.splice(raw_upper_id_queue.indexOf(v.source),1)
-          }
-        })
-        //分配剩余的id
-        for(let remain_id of Array.from(new_id_set)){
-          if(raw_upper_id_queue.length != 0){//raw_upper_id_queue还有剩余，那么优先给id绑定真实点的raw_id
-            upper[String(raw_upper_id_queue.pop())] = remain_id;
-          }
-          else{//raw_upper_id_queue无剩余，那么给id绑定到虚拟的raw_id，虚拟的raw_id为字符串，格式如`fake-${remain_id}`
-            upper[`fake-${remain_id}`] = remain_id;
-          }
-        }
-      }
-
-
-      //添加edge_data
-      innerGraphs.forEach((v,layer_index)=>{
-        let links = v.links;
-        links.forEach((l)=>{
-            edge_data.push(`${layer_index+1} ${layer_map[layer_index][String(l.source)]} ${layer_map[layer_index][String(l.target)]} 1`)
-        })
-        
-      })
-      
-
-      await axios({
-        url:'api/getWangZixiaoLayout',
-        method:"POST",
-        data:{
-          'layer_data':layer_data,
-          'node_data':node_data,
-          'edge_data':edge_data,
-        }
-      }).then((response)=>{
-        const data = response.data;
-        /**
-         * 
-         * 打包为layoutData
-         * 
-         */
-        let layoutData = []
-        for(let layer_index = 0;layer_index < data.length;layer_index++){
-          layoutData.push({
-            'nodes':[],
-            'links':[],
-          })
-          //装填点
-          innerGraphs[layer_index].nodes.forEach(v=>{
-            let posNode = JSON.parse(JSON.stringify(v))
-            posNode['x'] = data[layer_index][layer_map[layer_index][String(v.id)] - 1][0];
-            posNode['y'] = data[layer_index][layer_map[layer_index][String(v.id)] - 1][1];
-            layoutData[layer_index].nodes.push(posNode)
-          })
-
-          /**
-           * 
-           * 变换点坐标到中心为(0.5*initAreaWidth,0.5*initAreaHeight)，边界适应边框。
-           * 
-           */
-          const maxX = Math.max(...layoutData[layer_index].nodes.map(v=>v.x))
-          const minX = Math.min(...layoutData[layer_index].nodes.map(v=>v.x))
-          const maxY = Math.max(...layoutData[layer_index].nodes.map(v=>v.y))
-          const minY = Math.min(...layoutData[layer_index].nodes.map(v=>v.y))
-          //变换
-          const xScale = d3.scaleLinear()
-            .domain([minX,maxX])
-            .range([this.baseRadius[layer_index] + this.initInnerPadding,this.initAreaWidth - this.baseRadius[layer_index] - this.initInnerPadding])
-          const yScale = d3.scaleLinear()
-            .domain([minY,maxY])
-            .range([this.baseRadius[layer_index] + this.initInnerPadding,this.initAreaHeight - this.baseRadius[layer_index] - this.initInnerPadding])
-          
-          layoutData[layer_index].nodes.forEach((v,i)=>{
-            layoutData[layer_index].nodes[i].x = xScale(layoutData[layer_index].nodes[i].x)
-            layoutData[layer_index].nodes[i].y = yScale(layoutData[layer_index].nodes[i].y)
-          })
-
-          //装填边
-          innerGraphs[layer_index].links.forEach(l=>{
-              let tempLink = JSON.parse(JSON.stringify(l))
-              layoutData[layer_index].nodes.forEach(v=>{
-                if(v.id==l.source){//source
-                  tempLink['source']={
-                    'id':v.id,
-                    'x':v.x,
-                    'y':v.y,
-                  }
-                }
-                else if(v.id==l.target){//target
-                  tempLink['target']={
-                    'id':v.id,
-                    'x':v.x,
-                    'y':v.y
-                  }
-                }
-              })
-              layoutData[layer_index].links.push(tempLink)
-          })
-          
-        }
-        
-        /**
-         * 
-         * 把布局数据传入给this.layoutData
-         * 
-         */
-        this.layoutData = layoutData
-
-      }).catch((err)=>{
-        console.log('err:',err)
-      })
-
-    },
-
-    getForceDirectedLayout(innerGraphs,outerLinks){//力导引布局
-
-        /**
-         * 
-         * 恰好适应边框，布局的左上角(0,0)在画布中对应borderAnchor
-         * 
-         * 要求:无要求
-         * 
-         */
-
-
-      let layoutData = []
-
-
-
-      for(let layer_index in innerGraphs){
-          let _nodes = JSON.parse(JSON.stringify(innerGraphs[layer_index].nodes));
-          let _links = JSON.parse(JSON.stringify(innerGraphs[layer_index].links));
-
-          console.log(JSON.parse(JSON.stringify(innerGraphs[layer_index].nodes)))
-          console.log(JSON.parse(JSON.stringify(innerGraphs[layer_index].links)))
-
-          let simulation = d3.forceSimulation()
-                              .nodes(_nodes)
-
-
-          let linkForce = d3.forceLink(_links).id(d=>d.id)
-
-          simulation.force('charge_force', d3.forceManyBody().strength(-50))
-                    .force('center_force', d3.forceCenter(0,0))//中心点为原点
-                    .force('links', linkForce)
-
-          simulation.stop();
-          simulation.tick(300);
-
-
-          /**
-           * 
-           * 变换坐标到中心为(0.5*initAreaWidth,0.5*initAreaHeight)，边界适应边框。
-           * 
-           */
-          const maxX = Math.max(..._nodes.map(v=>v.x))
-          const minX = Math.min(..._nodes.map(v=>v.x))
-          const maxY = Math.max(..._nodes.map(v=>v.y))
-          const minY = Math.min(..._nodes.map(v=>v.y))
-          //变换
-          const xScale = d3.scaleLinear()
-            .domain([minX,maxX])
-            .range([this.baseRadius[layer_index] + this.initInnerPadding,this.initAreaWidth - this.baseRadius[layer_index] - this.initInnerPadding])
-          const yScale = d3.scaleLinear()
-            .domain([minY,maxY])
-            .range([this.baseRadius[layer_index] + this.initInnerPadding,this.initAreaHeight - this.baseRadius[layer_index] - this.initInnerPadding])
-          
-          _nodes.forEach((v,i)=>{
-            _nodes[i].x = xScale(_nodes[i].x)
-            _nodes[i].y = yScale(_nodes[i].y)
-          })
-
-
-          /**
-           * 
-           * 打包布局结果
-           * 
-           */
-          let result = {
-            'nodes':_nodes.map(v=>{
-                      return JSON.parse(JSON.stringify(v))
-                    }),
-            'links':_links.map(v=>{
-                      return JSON.parse(JSON.stringify(v))
-                    }),
-          }
-
-          layoutData.push(result)
-          
-      }
-
-      /**
-       * 
-       * 把布局数据传递给layoutData
-       * 
-       */
-      this.layoutData = layoutData;
-
-    },
-
-    async getSingleWangZixiaoLayout_upper_more(innerGraphs,outerLinks,current_layer_index){//两层之间的王子潇布局（上层点数目>下层点数目）（聚焦模式使用）
-      /**
-       *
-       * 恰好适应边框，布局的左上角(0,0)在画布中对应borderAnchor
-       * 
-       * 要求：1.上层点多于下层点
-       *      2.innerGraphs只能有两层，outerLinks只能有一层
-       * 
-       */
-
-
-      /**
-       * 
-       * 错误判断
-       * 
-       */
-      if(current_layer_index >= innerGraphs.length - 1)return;
-
-      
-      /**
-       * 
-       * 过滤数据
-       * 
-       */
-      innerGraphs = [innerGraphs[current_layer_index],innerGraphs[current_layer_index+1]]
-      outerLinks = [outerLinks[current_layer_index]]
-
-
-      /**
-       * 
-       * layer_data、node_data、edge_data为最后要传给子潇算法的参数
-       * 
-       */
-
-
-      let layer_data = ['layerID layerLabel']
-      let layer_map = [] //各层的原始节点id->算法节点id的映射
-      let node_data = ['nodeID nodeAge nodeTenure nodeLevel nodeDepartment']
-      let edge_data = []
-      for(let layer_index in innerGraphs){
-        layer_data.push(`${parseInt(layer_index)+1} layer_name`);//构建layer data
-        //初始化layer_map
-        layer_map.push({})  
-      }
-      let whole_id_set = new Set() //所有会出现的算法节点id的集合
-      innerGraphs[0].nodes.forEach((v,i)=>{
-        layer_map[0][String(v.id)] = (i + 1)//基于节点最多层生成算法id，并定义算法id为1-n
-        whole_id_set.add((i + 1))
-        node_data.push(`${(i + 1)} 0 0 0 0`)
-      })
-      for(let layer_index in outerLinks){
-        //正序给layer_map赋值
-        let ol = outerLinks[parseInt(layer_index)].links;//层间连接边
-        let upper = layer_map[parseInt(layer_index)];//上层映射
-        let lower = layer_map[parseInt(layer_index)+1];//下层映射
-        
-        let new_id_set = new Set(whole_id_set)
-        let raw_lower_id_queue = innerGraphs[parseInt(layer_index)+1].nodes.map(v=>v.id)//保存了下层的innerGrah中的id
-        
-        ol.forEach((v,i)=>{//利用边建立关系
-          /**
-           * 
-           * 如果存在多个上层点对同一个下层点，那么下层点的算法id为第一次遍历到的连接边的上层点
-           * 如果存在一个上层点对多个下层点，那么这多个下层点用同样的算法id
-           * 
-           */
-
-          if(lower[String(v.target)] === undefined){//如果下层点没有被赋予过算法id
-            lower[String(v.target)] = upper[String(v.source)]
-            new_id_set.delete(upper[String(v.source)])
-            raw_lower_id_queue.splice(raw_lower_id_queue.indexOf(v.target),1)
-          }
-        })
-        //分配剩余的id
-        for(let remain_id of Array.from(new_id_set)){
-          if(raw_lower_id_queue.length != 0){//raw_lower_id_queue还有剩余，那么优先给id绑定真实点的raw_id
-            lower[String(raw_lower_id_queue.pop())] = remain_id;
-          }
-          else{//raw_lower_id_queue无剩余，那么给id绑定到虚拟的raw_id，虚拟的raw_id为字符串，格式如`fake-${remain_id}`
-            lower[`fake-${remain_id}`] = remain_id;
-          }
-        }
-      }
-      //添加edge_data
-      innerGraphs.forEach((v,layer_index)=>{
-        let links = v.links;
-        links.forEach((l)=>{
-            edge_data.push(`${layer_index+1} ${layer_map[layer_index][String(l.source)]} ${layer_map[layer_index][String(l.target)]} 1`)
-        })
-        
-      })
-      
-      await axios({
-        url:'api/getWangZixiaoLayout',
-        method:"POST",
-        data:{
-          'layer_data':layer_data,
-          'node_data':node_data,
-          'edge_data':edge_data,
-        }
-      }).then((response)=>{
-        const data = response.data;
-        /**
-         * 
-         * 打包为layoutData
-         * 
-         */
-        let layoutData = []
-        for(let layer_index = 0;layer_index < data.length;layer_index++){
-          layoutData.push({
-            'nodes':[],
-            'links':[],
-          })
-          //装填点
-          innerGraphs[layer_index].nodes.forEach(v=>{
-            let posNode = JSON.parse(JSON.stringify(v))
-            posNode['x'] = data[layer_index][layer_map[layer_index][String(v.id)] - 1][0];
-            posNode['y'] = data[layer_index][layer_map[layer_index][String(v.id)] - 1][1];
-            layoutData[layer_index].nodes.push(posNode)
-          })
-
-          /**
-           * 
-           * 变换点坐标到中心为(0.5*initAreaWidth,0.5*initAreaHeight)，边界适应边框。
-           * 
-           */
-          const maxX = Math.max(...layoutData[layer_index].nodes.map(v=>v.x))
-          const minX = Math.min(...layoutData[layer_index].nodes.map(v=>v.x))
-          const maxY = Math.max(...layoutData[layer_index].nodes.map(v=>v.y))
-          const minY = Math.min(...layoutData[layer_index].nodes.map(v=>v.y))
-          //变换
-          const xScale = d3.scaleLinear()
-            .domain([minX,maxX])
-            .range([this.baseRadius[current_layer_index] + this.initInnerPadding,this.initAreaWidth - this.baseRadius[current_layer_index] - this.initInnerPadding])
-          const yScale = d3.scaleLinear()
-            .domain([minY,maxY])
-            .range([this.baseRadius[current_layer_index] + this.initInnerPadding,this.initAreaHeight - this.baseRadius[current_layer_index] - this.initInnerPadding])
-          
-          layoutData[layer_index].nodes.forEach((v,i)=>{
-            layoutData[layer_index].nodes[i].x = xScale(layoutData[layer_index].nodes[i].x)
-            layoutData[layer_index].nodes[i].y = yScale(layoutData[layer_index].nodes[i].y)
-          })
-
-          //装填边
-          innerGraphs[layer_index].links.forEach(l=>{
-              let tempLink = JSON.parse(JSON.stringify(l))
-              layoutData[layer_index].nodes.forEach(v=>{
-                if(v.id==l.source){//source
-                  tempLink['source']={
-                    'id':v.id,
-                    'x':v.x,
-                    'y':v.y,
-                  }
-                }
-                else if(v.id==l.target){//target
-                  tempLink['target']={
-                    'id':v.id,
-                    'x':v.x,
-                    'y':v.y
-                  }
-                }
-              })
-              layoutData[layer_index].links.push(tempLink)
-          })
-          
-        }
-        
-        /**
-         * 
-         * 把布局数据更新
-         * 
-         */
-        this.layoutData[parseInt(current_layer_index)] = layoutData[0]
-        this.layoutData[parseInt(current_layer_index)+1] = layoutData[1]
-
-      }).catch((err)=>{
-        console.log('err:',err)
-      })
-
-    },
-
 
     drawSingleLayer(layer_index){//绘制/更新单层
         /**
@@ -1736,6 +1143,13 @@ export default {
 
     },
 
+
+    /**
+     * 
+     * handle
+     * 
+     */
+
     async handleRotateFocusChange(layer_index){//rotateFoucus被改变的回调函数
         //把其他的rotateFoucus设为false
         for(let i = 0;i < this.rotateFocusFlag.length;i++){
@@ -1825,6 +1239,649 @@ export default {
     handleChangeSelectedNodeMessageColumns(layer_index){//selectedNodeMessageColumns被改变后的回调函数
       this.updateInnerInfo(layer_index)
     },
+
+
+    /**
+     * 
+     * 布局方法
+     * 
+     */    
+
+    getForceDirectedLayout(innerGraphs,outerLinks){//力导引布局
+
+        /**
+         * 
+         * 恰好适应边框，布局的左上角(0,0)在画布中对应borderAnchor
+         * 
+         * 要求:无要求
+         * 
+         */
+
+
+        let layoutData = []
+
+        for(let layer_index in innerGraphs){
+          let _nodes = JSON.parse(JSON.stringify(innerGraphs[layer_index].nodes));
+          let _links = JSON.parse(JSON.stringify(innerGraphs[layer_index].links));
+
+          console.log(JSON.parse(JSON.stringify(innerGraphs[layer_index].nodes)))
+          console.log(JSON.parse(JSON.stringify(innerGraphs[layer_index].links)))
+
+          let simulation = d3.forceSimulation()
+                              .nodes(_nodes)
+
+
+          let linkForce = d3.forceLink(_links).id(d=>d.id)
+
+          simulation.force('charge_force', d3.forceManyBody().strength(-50))
+                    .force('center_force', d3.forceCenter(0,0))//中心点为原点
+                    .force('links', linkForce)
+
+          simulation.stop();
+          simulation.tick(300);
+
+
+          /**
+           * 
+           * 变换坐标到中心为(0.5*initAreaWidth,0.5*initAreaHeight)，边界适应边框。
+           * 
+           */
+          const maxX = Math.max(..._nodes.map(v=>v.x))
+          const minX = Math.min(..._nodes.map(v=>v.x))
+          const maxY = Math.max(..._nodes.map(v=>v.y))
+          const minY = Math.min(..._nodes.map(v=>v.y))
+          //变换
+          const xScale = d3.scaleLinear()
+            .domain([minX,maxX])
+            .range([this.baseRadius[layer_index] + this.initInnerPadding,this.initAreaWidth - this.baseRadius[layer_index] - this.initInnerPadding])
+          const yScale = d3.scaleLinear()
+            .domain([minY,maxY])
+            .range([this.baseRadius[layer_index] + this.initInnerPadding,this.initAreaHeight - this.baseRadius[layer_index] - this.initInnerPadding])
+          
+          _nodes.forEach((v,i)=>{
+            _nodes[i].x = xScale(_nodes[i].x)
+            _nodes[i].y = yScale(_nodes[i].y)
+          })
+
+
+          /**
+           * 
+           * 打包布局结果
+           * 
+           */
+          let result = {
+            'nodes':_nodes.map(v=>{
+                      return JSON.parse(JSON.stringify(v))
+                    }),
+            'links':_links.map(v=>{
+                      return JSON.parse(JSON.stringify(v))
+                    }),
+          }
+
+          layoutData.push(result)
+          
+        }
+
+        /**
+        * 
+        * 把布局数据传递给layoutData
+        * 
+        */
+        this.layoutData = layoutData;
+
+    },
+
+    async getWangZixiaoLayout(innerGraphs,outerLinks){//王子潇布局
+      /**
+       *
+       * 恰好适应边框，布局的左上角(0,0)在画布中对应borderAnchor
+       * 
+       */
+
+
+      /**
+       * 
+       * layer_data、node_data、edge_data为最后要传给子潇算法的参数
+       * 
+       */
+      let layer_data = ['layerID layerLabel']
+      let node_data = ['nodeID nodeAge nodeTenure nodeLevel nodeDepartment']
+      let edge_data = []
+      //构建layer_data
+      for(let layer_index = 0;layer_index < innerGraphs.length;layer_index++){ 
+        layer_data.push(`${layer_index+1} layer_name`);
+      }
+      //检索参照层（节点最多的层）
+      let std_layer_index = 0;
+      for(let layer_index = 0;layer_index < innerGraphs.length;layer_index++){
+        if(innerGraphs[layer_index].nodes.length > innerGraphs[std_layer_index].nodes.length){
+          std_layer_index = layer_index;
+        }
+      }
+      //
+
+
+
+    },
+
+    async getWangZixiaoLayout_upper_more(innerGraphs,outerLinks){//王子潇布局（上层点数目>下层点数目）
+      /**
+       *
+       * 恰好适应边框，布局的左上角(0,0)在画布中对应borderAnchor
+       * 
+       * 要求: 1.上层点多于下层点
+       * 
+       */
+
+
+      /**
+       * 
+       * layer_data、node_data、edge_data为最后要传给子潇算法的参数
+       * 
+       */
+      
+
+      let layer_data = ['layerID layerLabel']
+      let layer_map = [] //各层的原始节点id->算法节点id的映射
+      let node_data = ['nodeID nodeAge nodeTenure nodeLevel nodeDepartment']
+      let edge_data = []
+      for(let layer_index in innerGraphs){
+        layer_data.push(`${parseInt(layer_index)+1} layer_name`);//构建layer data
+        //初始化layer_map
+        layer_map.push({})  
+      }
+      let whole_id_set = new Set() //所有会出现的算法节点id的集合
+      innerGraphs[0].nodes.forEach((v,i)=>{
+        layer_map[0][String(v.id)] = (i + 1)//基于节点最多层生成算法id，并定义算法id为1-n
+        whole_id_set.add((i + 1))
+        node_data.push(`${(i + 1)} 0 0 0 0`)
+      })
+      for(let layer_index in outerLinks){
+        //正序给layer_map赋值
+        let ol = outerLinks[parseInt(layer_index)].links;//层间连接边
+        let upper = layer_map[parseInt(layer_index)];//上层映射
+        let lower = layer_map[parseInt(layer_index)+1];//下层映射
+        
+        let new_id_set = new Set(whole_id_set)
+        let raw_lower_id_queue = innerGraphs[parseInt(layer_index)+1].nodes.map(v=>v.id)//保存了下层的innerGrah中的id
+        
+        ol.forEach((v,i)=>{//利用边建立关系
+          /**
+           * 
+           * 如果存在多个上层点对同一个下层点，那么下层点的算法id为第一次遍历到的连接边的上层点
+           * 如果存在一个上层点对多个下层点，那么这多个下层点用同样的算法id
+           * 
+           */
+
+          if(lower[String(v.target)] === undefined){//如果下层点没有被赋予过算法id
+            lower[String(v.target)] = upper[String(v.source)]
+            new_id_set.delete(upper[String(v.source)])
+            raw_lower_id_queue.splice(raw_lower_id_queue.indexOf(String(v.target)),1)
+          }
+        })
+        //分配剩余的id
+        for(let remain_id of Array.from(new_id_set)){
+          if(raw_lower_id_queue.length != 0){//raw_lower_id_queue还有剩余，那么优先给id绑定真实点的raw_id
+            lower[String(raw_lower_id_queue.pop())] = remain_id;
+          }
+          else{//raw_lower_id_queue无剩余，那么给id绑定到虚拟的raw_id，虚拟的raw_id为字符串，格式如`fake-${remain_id}`
+            lower[`fake-${remain_id}`] = remain_id;
+          }
+        }
+      }
+      //添加edge_data
+      innerGraphs.forEach((v,layer_index)=>{
+        let links = v.links;
+        links.forEach((l)=>{
+            edge_data.push(`${layer_index+1} ${layer_map[layer_index][String(l.source)]} ${layer_map[layer_index][String(l.target)]} 1`)
+        })
+        
+      })
+
+      console.log('layer_data:',layer_data)
+      console.log('node_data:',node_data)
+      console.log('edge_data:',edge_data)
+
+      await axios({
+        url:'api/getWangZixiaoLayout',
+        method:"POST",
+        data:{
+          'layer_data':layer_data,
+          'node_data':node_data,
+          'edge_data':edge_data,
+        }
+      }).then((response)=>{
+        const data = response.data;
+        /**
+         * 
+         * 打包为layoutData
+         * 
+         */
+
+        let layoutData = []
+        for(let layer_index = 0;layer_index < data.length;layer_index++){
+          layoutData.push({
+            'nodes':[],
+            'links':[],
+          })
+          //装填点
+          innerGraphs[layer_index].nodes.forEach(v=>{
+            let posNode = JSON.parse(JSON.stringify(v))
+            posNode['x'] = data[layer_index][layer_map[layer_index][String(v.id)] - 1][0];
+            posNode['y'] = data[layer_index][layer_map[layer_index][String(v.id)] - 1][1];
+            layoutData[layer_index].nodes.push(posNode)
+          })
+
+          /**
+           * 
+           * 变换点坐标到中心为(0.5*initAreaWidth,0.5*initAreaHeight)，边界适应边框。
+           * 
+           */
+          const maxX = Math.max(...layoutData[layer_index].nodes.map(v=>v.x))
+          const minX = Math.min(...layoutData[layer_index].nodes.map(v=>v.x))
+          const maxY = Math.max(...layoutData[layer_index].nodes.map(v=>v.y))
+          const minY = Math.min(...layoutData[layer_index].nodes.map(v=>v.y))
+          //变换
+          const xScale = d3.scaleLinear()
+            .domain([minX,maxX])
+            .range([this.baseRadius[layer_index] + this.initInnerPadding,this.initAreaWidth - this.baseRadius[layer_index] - this.initInnerPadding])
+          const yScale = d3.scaleLinear()
+            .domain([minY,maxY])
+            .range([this.baseRadius[layer_index] + this.initInnerPadding,this.initAreaHeight - this.baseRadius[layer_index] - this.initInnerPadding])
+          
+          layoutData[layer_index].nodes.forEach((v,i)=>{
+            layoutData[layer_index].nodes[i].x = xScale(layoutData[layer_index].nodes[i].x)
+            layoutData[layer_index].nodes[i].y = yScale(layoutData[layer_index].nodes[i].y)
+          })
+
+          //装填边
+          innerGraphs[layer_index].links.forEach(l=>{
+              let tempLink = JSON.parse(JSON.stringify(l))
+              layoutData[layer_index].nodes.forEach(v=>{
+                if(v.id==l.source){//source
+                  tempLink['source']={
+                    'id':v.id,
+                    'x':v.x,
+                    'y':v.y,
+                  }
+                }
+                else if(v.id==l.target){//target
+                  tempLink['target']={
+                    'id':v.id,
+                    'x':v.x,
+                    'y':v.y
+                  }
+                }
+              })
+              layoutData[layer_index].links.push(tempLink)
+          })
+          
+        }
+        
+        /**
+         * 
+         * 把布局数据传入给this.layoutData
+         * 
+         */
+        this.layoutData = layoutData
+
+      }).catch((err)=>{
+        console.log('err:',err)
+      })
+
+    },
+
+    async getWangZixiaoLayout_upper_less(innerGraphs,outerLinks){//王子潇布局（上层点数目<下层点数目）
+      /**
+       *
+       * 恰好适应边框，布局的左上角(0,0)在画布中对应borderAnchor
+       * 
+       * 要求: 1.上层点多于下层点
+       * 
+       */
+
+
+      /**
+       * 
+       * layer_data、node_data、edge_data为最后要传给子潇算法的参数
+       * 
+       */
+      
+
+      let layer_data = ['layerID layerLabel']
+      let layer_map = [] //各层的原始节点id->算法节点id的映射
+      let node_data = ['nodeID nodeAge nodeTenure nodeLevel nodeDepartment']
+      let edge_data = []
+      for(let layer_index in innerGraphs){
+        layer_data.push(`${parseInt(layer_index)+1} layer_name`);//构建layer data
+        //初始化layer_map
+        layer_map.push({})  
+      }
+      let whole_id_set = new Set() //所有会出现的算法节点id的集合
+      innerGraphs[innerGraphs.length - 1].nodes.forEach((v,i)=>{
+        layer_map[innerGraphs.length - 1][String(v.id)] = (i + 1)//基于节点最多层生成算法id，并定义算法id为1-n
+        whole_id_set.add((i + 1))
+        node_data.push(`${(i + 1)} 0 0 0 0`)
+      })
+      for(let layer_index in outerLinks){
+        //倒序给layer_map赋值
+        let ol = outerLinks[outerLinks.length - parseInt(layer_index) - 1].links;//层间连接边
+        let upper = layer_map[outerLinks.length - parseInt(layer_index) - 1];//上层映射
+        let lower = layer_map[outerLinks.length - parseInt(layer_index)];//下层映射
+        let new_id_set = new Set(whole_id_set)
+        let raw_upper_id_queue = innerGraphs[outerLinks.length - parseInt(layer_index) - 1].nodes.map(v=>v.id)//保存了上层的innerGrah中的id
+        
+        ol.forEach((v,i)=>{//利用边建立关系
+          /**
+           * 
+           * 如果存在多个上层点对同一个下层点，那么下层点的算法id为第一次遍历到的连接边的上层点
+           * 如果存在一个上层点对多个下层点，那么这多个下层点用同样的算法id
+           * 
+           */
+
+          if(upper[String(v.source)] === undefined){//如果下层点没有被赋予过算法id
+            upper[String(v.source)] = lower[String(v.target)]
+            new_id_set.delete(lower[String(v.target)])
+            raw_upper_id_queue.splice(raw_upper_id_queue.indexOf(v.source),1)
+          }
+        })
+        //分配剩余的id
+        for(let remain_id of Array.from(new_id_set)){
+          if(raw_upper_id_queue.length != 0){//raw_upper_id_queue还有剩余，那么优先给id绑定真实点的raw_id
+            upper[String(raw_upper_id_queue.pop())] = remain_id;
+          }
+          else{//raw_upper_id_queue无剩余，那么给id绑定到虚拟的raw_id，虚拟的raw_id为字符串，格式如`fake-${remain_id}`
+            upper[`fake-${remain_id}`] = remain_id;
+          }
+        }
+      }
+
+
+      //添加edge_data
+      innerGraphs.forEach((v,layer_index)=>{
+        let links = v.links;
+        links.forEach((l)=>{
+            edge_data.push(`${layer_index+1} ${layer_map[layer_index][String(l.source)]} ${layer_map[layer_index][String(l.target)]} 1`)
+        })
+        
+      })
+      
+
+      await axios({
+        url:'api/getWangZixiaoLayout',
+        method:"POST",
+        data:{
+          'layer_data':layer_data,
+          'node_data':node_data,
+          'edge_data':edge_data,
+        }
+      }).then((response)=>{
+        const data = response.data;
+        /**
+         * 
+         * 打包为layoutData
+         * 
+         */
+        let layoutData = []
+        for(let layer_index = 0;layer_index < data.length;layer_index++){
+          layoutData.push({
+            'nodes':[],
+            'links':[],
+          })
+          //装填点
+          innerGraphs[layer_index].nodes.forEach(v=>{
+            let posNode = JSON.parse(JSON.stringify(v))
+            posNode['x'] = data[layer_index][layer_map[layer_index][String(v.id)] - 1][0];
+            posNode['y'] = data[layer_index][layer_map[layer_index][String(v.id)] - 1][1];
+            layoutData[layer_index].nodes.push(posNode)
+          })
+
+          /**
+           * 
+           * 变换点坐标到中心为(0.5*initAreaWidth,0.5*initAreaHeight)，边界适应边框。
+           * 
+           */
+          const maxX = Math.max(...layoutData[layer_index].nodes.map(v=>v.x))
+          const minX = Math.min(...layoutData[layer_index].nodes.map(v=>v.x))
+          const maxY = Math.max(...layoutData[layer_index].nodes.map(v=>v.y))
+          const minY = Math.min(...layoutData[layer_index].nodes.map(v=>v.y))
+          //变换
+          const xScale = d3.scaleLinear()
+            .domain([minX,maxX])
+            .range([this.baseRadius[layer_index] + this.initInnerPadding,this.initAreaWidth - this.baseRadius[layer_index] - this.initInnerPadding])
+          const yScale = d3.scaleLinear()
+            .domain([minY,maxY])
+            .range([this.baseRadius[layer_index] + this.initInnerPadding,this.initAreaHeight - this.baseRadius[layer_index] - this.initInnerPadding])
+          
+          layoutData[layer_index].nodes.forEach((v,i)=>{
+            layoutData[layer_index].nodes[i].x = xScale(layoutData[layer_index].nodes[i].x)
+            layoutData[layer_index].nodes[i].y = yScale(layoutData[layer_index].nodes[i].y)
+          })
+
+          //装填边
+          innerGraphs[layer_index].links.forEach(l=>{
+              let tempLink = JSON.parse(JSON.stringify(l))
+              layoutData[layer_index].nodes.forEach(v=>{
+                if(v.id==l.source){//source
+                  tempLink['source']={
+                    'id':v.id,
+                    'x':v.x,
+                    'y':v.y,
+                  }
+                }
+                else if(v.id==l.target){//target
+                  tempLink['target']={
+                    'id':v.id,
+                    'x':v.x,
+                    'y':v.y
+                  }
+                }
+              })
+              layoutData[layer_index].links.push(tempLink)
+          })
+          
+        }
+        
+        /**
+         * 
+         * 把布局数据传入给this.layoutData
+         * 
+         */
+        this.layoutData = layoutData
+
+      }).catch((err)=>{
+        console.log('err:',err)
+      })
+
+    },
+
+    async getSingleWangZixiaoLayout_upper_more(innerGraphs,outerLinks,current_layer_index){//两层之间的王子潇布局（上层点数目>下层点数目）（聚焦模式使用）
+      /**
+       *
+       * 恰好适应边框，布局的左上角(0,0)在画布中对应borderAnchor
+       * 
+       * 要求：1.上层点多于下层点
+       *      2.innerGraphs只能有两层，outerLinks只能有一层
+       * 
+       */
+
+
+      /**
+       * 
+       * 错误判断
+       * 
+       */
+      if(current_layer_index >= innerGraphs.length - 1)return;
+
+      
+      /**
+       * 
+       * 过滤数据
+       * 
+       */
+      innerGraphs = [innerGraphs[current_layer_index],innerGraphs[current_layer_index+1]]
+      outerLinks = [outerLinks[current_layer_index]]
+
+
+      /**
+       * 
+       * layer_data、node_data、edge_data为最后要传给子潇算法的参数
+       * 
+       */
+
+
+      let layer_data = ['layerID layerLabel']
+      let layer_map = [] //各层的原始节点id->算法节点id的映射
+      let node_data = ['nodeID nodeAge nodeTenure nodeLevel nodeDepartment']
+      let edge_data = []
+      for(let layer_index in innerGraphs){
+        layer_data.push(`${parseInt(layer_index)+1} layer_name`);//构建layer data
+        //初始化layer_map
+        layer_map.push({})  
+      }
+      let whole_id_set = new Set() //所有会出现的算法节点id的集合
+      innerGraphs[0].nodes.forEach((v,i)=>{
+        layer_map[0][String(v.id)] = (i + 1)//基于节点最多层生成算法id，并定义算法id为1-n
+        whole_id_set.add((i + 1))
+        node_data.push(`${(i + 1)} 0 0 0 0`)
+      })
+      for(let layer_index in outerLinks){
+        //正序给layer_map赋值
+        let ol = outerLinks[parseInt(layer_index)].links;//层间连接边
+        let upper = layer_map[parseInt(layer_index)];//上层映射
+        let lower = layer_map[parseInt(layer_index)+1];//下层映射
+        
+        let new_id_set = new Set(whole_id_set)
+        let raw_lower_id_queue = innerGraphs[parseInt(layer_index)+1].nodes.map(v=>v.id)//保存了下层的innerGrah中的id
+        
+        ol.forEach((v,i)=>{//利用边建立关系
+          /**
+           * 
+           * 如果存在多个上层点对同一个下层点，那么下层点的算法id为第一次遍历到的连接边的上层点
+           * 如果存在一个上层点对多个下层点，那么这多个下层点用同样的算法id
+           * 
+           */
+
+          if(lower[String(v.target)] === undefined){//如果下层点没有被赋予过算法id
+            lower[String(v.target)] = upper[String(v.source)]
+            new_id_set.delete(upper[String(v.source)])
+            raw_lower_id_queue.splice(raw_lower_id_queue.indexOf(v.target),1)
+          }
+        })
+        //分配剩余的id
+        for(let remain_id of Array.from(new_id_set)){
+          if(raw_lower_id_queue.length != 0){//raw_lower_id_queue还有剩余，那么优先给id绑定真实点的raw_id
+            lower[String(raw_lower_id_queue.pop())] = remain_id;
+          }
+          else{//raw_lower_id_queue无剩余，那么给id绑定到虚拟的raw_id，虚拟的raw_id为字符串，格式如`fake-${remain_id}`
+            lower[`fake-${remain_id}`] = remain_id;
+          }
+        }
+      }
+      //添加edge_data
+      innerGraphs.forEach((v,layer_index)=>{
+        let links = v.links;
+        links.forEach((l)=>{
+            edge_data.push(`${layer_index+1} ${layer_map[layer_index][String(l.source)]} ${layer_map[layer_index][String(l.target)]} 1`)
+        })
+        
+      })
+      
+      await axios({
+        url:'api/getWangZixiaoLayout',
+        method:"POST",
+        data:{
+          'layer_data':layer_data,
+          'node_data':node_data,
+          'edge_data':edge_data,
+        }
+      }).then((response)=>{
+        const data = response.data;
+        /**
+         * 
+         * 打包为layoutData
+         * 
+         */
+        let layoutData = []
+        for(let layer_index = 0;layer_index < data.length;layer_index++){
+          layoutData.push({
+            'nodes':[],
+            'links':[],
+          })
+          //装填点
+          innerGraphs[layer_index].nodes.forEach(v=>{
+            let posNode = JSON.parse(JSON.stringify(v))
+            posNode['x'] = data[layer_index][layer_map[layer_index][String(v.id)] - 1][0];
+            posNode['y'] = data[layer_index][layer_map[layer_index][String(v.id)] - 1][1];
+            layoutData[layer_index].nodes.push(posNode)
+          })
+
+          /**
+           * 
+           * 变换点坐标到中心为(0.5*initAreaWidth,0.5*initAreaHeight)，边界适应边框。
+           * 
+           */
+          const maxX = Math.max(...layoutData[layer_index].nodes.map(v=>v.x))
+          const minX = Math.min(...layoutData[layer_index].nodes.map(v=>v.x))
+          const maxY = Math.max(...layoutData[layer_index].nodes.map(v=>v.y))
+          const minY = Math.min(...layoutData[layer_index].nodes.map(v=>v.y))
+          //变换
+          const xScale = d3.scaleLinear()
+            .domain([minX,maxX])
+            .range([this.baseRadius[current_layer_index] + this.initInnerPadding,this.initAreaWidth - this.baseRadius[current_layer_index] - this.initInnerPadding])
+          const yScale = d3.scaleLinear()
+            .domain([minY,maxY])
+            .range([this.baseRadius[current_layer_index] + this.initInnerPadding,this.initAreaHeight - this.baseRadius[current_layer_index] - this.initInnerPadding])
+          
+          layoutData[layer_index].nodes.forEach((v,i)=>{
+            layoutData[layer_index].nodes[i].x = xScale(layoutData[layer_index].nodes[i].x)
+            layoutData[layer_index].nodes[i].y = yScale(layoutData[layer_index].nodes[i].y)
+          })
+
+          //装填边
+          innerGraphs[layer_index].links.forEach(l=>{
+              let tempLink = JSON.parse(JSON.stringify(l))
+              layoutData[layer_index].nodes.forEach(v=>{
+                if(v.id==l.source){//source
+                  tempLink['source']={
+                    'id':v.id,
+                    'x':v.x,
+                    'y':v.y,
+                  }
+                }
+                else if(v.id==l.target){//target
+                  tempLink['target']={
+                    'id':v.id,
+                    'x':v.x,
+                    'y':v.y
+                  }
+                }
+              })
+              layoutData[layer_index].links.push(tempLink)
+          })
+          
+        }
+        
+        /**
+         * 
+         * 把布局数据更新
+         * 
+         */
+        this.layoutData[parseInt(current_layer_index)] = layoutData[0]
+        this.layoutData[parseInt(current_layer_index)+1] = layoutData[1]
+
+      }).catch((err)=>{
+        console.log('err:',err)
+      })
+
+    },
+
+
+    /**
+     * 
+     * 交互接口
+     * 
+     */
 
     exportChosenData(){//导出选择数据
       //绑定事件：@exportChosenData

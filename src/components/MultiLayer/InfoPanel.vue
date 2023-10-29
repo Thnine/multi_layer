@@ -34,7 +34,6 @@ export default {
   },
 
   methods:{
-
     setMessageData(message){
       this.messageData.length = 0;
       for(let key in message){
